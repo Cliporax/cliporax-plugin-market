@@ -1,0 +1,19 @@
+{
+  "id": "com.cliporax.cloud-sync",
+  "name": "Cloud Sync",
+  "description": "Synchronizes clipboard history through a configured cloud storage backend.",
+  "version": "0.1.0",
+  "author": "Cliporax",
+  "license": "MIT",
+  "homepage": "https://github.com/Cliporax/cliporax-plugin-market",
+  "repository": "https://github.com/Cliporax/cliporax-plugin-market",
+  "keywords": ["sync", "cloud", "backup"],
+  "type": "sync",
+  "permissions": ["network", "storage", "clipboard:read"],
+  "minAppVersion": "0.1.0",
+  "compatibility": {
+    "platforms": ["linux", "macos", "windows"]
+  },
+  "icon": "assets/icon.svg",
+  "main": "main.js"
+}

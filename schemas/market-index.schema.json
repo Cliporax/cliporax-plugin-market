@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cliporax.app/schemas/market-index.schema.json",
+  "title": "Cliporax Plugin Market Index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "marketVersion", "plugins"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "marketVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/plugin"
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "pluginId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)+$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "plugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "description",
+        "version",
+        "author",
+        "license",
+        "homepage",
+        "repository",
+        "keywords",
+        "type",
+        "permissions",
+        "minAppVersion",
+        "compatibility",
+        "icon",
+        "publisher",
+        "asset"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/pluginId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "version": {
+          "$ref": "#/$defs/semver"
+        },
+        "author": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "homepage": {
+          "$ref": "#/$defs/url"
+        },
+        "repository": {
+          "$ref": "#/$defs/url"
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "type": {
+          "type": "string",
+          "enum": ["utility", "integration", "viewer", "automation", "sync", "other"]
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "minAppVersion": {
+          "$ref": "#/$defs/semver"
+        },
+        "compatibility": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["platforms"],
+          "properties": {
+            "platforms": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["linux", "macos", "windows"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          }
+        },
+        "icon": {
+          "$ref": "#/$defs/icon"
+        },
+        "publisher": {
+          "$ref": "#/$defs/publisher"
+        },
+        "asset": {
+          "$ref": "#/$defs/asset"
+        }
+      }
+    },
+    "publisher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "url", "official"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "$ref": "#/$defs/url"
+        },
+        "official": {
+          "type": "boolean"
+        }
+      }
+    },
+    "icon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "contentType", "size", "sha256", "dataUrl"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._/-]+\\.(svg|png|webp|jpg|jpeg)$"
+        },
+        "contentType": {
+          "type": "string",
+          "enum": ["image/svg+xml", "image/png", "image/webp", "image/jpeg"]
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "dataUrl": {
+          "type": "string",
+          "pattern": "^data:image/(svg\\+xml|png|webp|jpeg);base64,"
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "downloadUrl",
+        "apiUrl",
+        "size",
+        "sha256",
+        "githubAssetId",
+        "contentType"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)+-[0-9A-Za-z.+-]+\\.cliporax-plugin\\.zip$"
+        },
+        "downloadUrl": {
+          "$ref": "#/$defs/url"
+        },
+        "apiUrl": {
+          "$ref": "#/$defs/url"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "githubAssetId": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "contentType": {
+          "type": "string",
+          "const": "application/zip"
+        }
+      }
+    }
+  }
+}

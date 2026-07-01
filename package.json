@@ -1,0 +1,17 @@
+{
+  "name": "cliporax-plugin-market",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-market.mjs build",
+    "validate": "node scripts/build-market.mjs validate",
+    "pack": "node scripts/build-market.mjs pack"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+market/index.json
+plugins/*/main.js
+findings.md
+progress.md
+task_plan.md
+*.log
