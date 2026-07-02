@@ -13,12 +13,15 @@ The initial official market release includes:
 
 - `com.cliporax.imagepreview`
 - `com.cliporax.qrcode`
-- `com.cliporax.qrscanner`
 
 `com.cliporax.cloud-sync` is intentionally not published as a market plugin.
 Cloud Sync keeps its sync engine, credential handling, encryption, and network
 operations in the Cliporax Rust backend. If Cloud Sync is ever published here,
 it should only be a UI shell that calls controlled `sync_*` backend commands.
+
+`com.cliporax.qrscanner` is also intentionally not published as a market plugin
+while it is bundled with Cliporax. It relies on Cliporax-owned screen capture
+commands and is marked `isBuiltin` in the app package.
 
 ## Layout
 
