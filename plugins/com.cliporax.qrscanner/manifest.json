@@ -1,0 +1,19 @@
+{
+  "id": "com.cliporax.qrscanner",
+  "name": "QR Scanner",
+  "description": "Scans QR codes from image clipboard items.",
+  "version": "0.1.0",
+  "author": "Cliporax",
+  "license": "MIT",
+  "homepage": "https://github.com/Cliporax/cliporax-plugin-market",
+  "repository": "https://github.com/Cliporax/cliporax-plugin-market",
+  "keywords": ["qr", "scanner", "image"],
+  "type": "utility",
+  "permissions": ["clipboard:read"],
+  "minAppVersion": "0.1.0",
+  "compatibility": {
+    "platforms": ["linux", "macos", "windows"]
+  },
+  "icon": "assets/icon.svg",
+  "main": "main.js"
+}
