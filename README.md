@@ -7,6 +7,19 @@ The repository builds a GitHub Release containing:
 - `index.json`
 - one `.cliporax-plugin.zip` package per plugin
 
+## First Release Scope
+
+The initial official market release includes:
+
+- `com.cliporax.imagepreview`
+- `com.cliporax.qrcode`
+- `com.cliporax.qrscanner`
+
+`com.cliporax.cloud-sync` is intentionally not published as a market plugin.
+Cloud Sync keeps its sync engine, credential handling, encryption, and network
+operations in the Cliporax Rust backend. If Cloud Sync is ever published here,
+it should only be a UI shell that calls controlled `sync_*` backend commands.
+
 ## Layout
 
 ```text
