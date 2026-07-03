@@ -246,9 +246,13 @@ function validateManifest(manifest, directoryName) {
   if (!semverPattern.test(manifest.minAppVersion)) {
     throw new Error(`Invalid minAppVersion for ${manifest.id}: ${manifest.minAppVersion}`);
   }
-  if (!allowedTypes.has(manifest.type)) throw new Error(`Invalid plugin type for ${manifest.id}: ${manifest.type}`);
   if (!Array.isArray(manifest.keywords)) throw new Error(`keywords must be an array for ${manifest.id}.`);
   if (!Array.isArray(manifest.permissions)) throw new Error(`permissions must be an array for ${manifest.id}.`);
+  const marketMetadata = getMarketMetadata(manifest);
+  if (!allowedTypes.has(marketMetadata.type)) {
+    throw new Error(`Invalid market plugin type for ${manifest.id}: ${marketMetadata.type}`);
+  }
+  if (!marketMetadata.author) throw new Error(`author must include a name for ${manifest.id}.`);
   if (!manifest.compatibility || !Array.isArray(manifest.compatibility.platforms)) {
     throw new Error(`compatibility.platforms must be an array for ${manifest.id}.`);
   }
@@ -342,19 +346,20 @@ function toMarketEntry(plugin, archive) {
   const baseUrl = getReleaseBaseUrl();
   const downloadUrl = `${baseUrl}/${encodeURIComponent(archive.name)}`;
   const apiUrl = getReleaseApiAssetUrl(archive.name);
+  const marketMetadata = getMarketMetadata(plugin.manifest);
 
   return {
     id: plugin.manifest.id,
     name: plugin.manifest.name,
     description: plugin.manifest.description,
     version: plugin.manifest.version,
-    author: plugin.manifest.author,
+    author: marketMetadata.author,
     license: plugin.manifest.license,
     homepage: plugin.manifest.homepage,
     repository: plugin.manifest.repository,
     keywords: plugin.manifest.keywords,
-    type: plugin.manifest.type,
-    permissions: plugin.manifest.permissions,
+    type: marketMetadata.type,
+    permissions: marketMetadata.permissions,
     minAppVersion: plugin.manifest.minAppVersion,
     compatibility: plugin.manifest.compatibility,
     icon: plugin.icon,
@@ -373,6 +378,30 @@ function toMarketEntry(plugin, archive) {
       contentType: "application/zip"
     }
   };
+}
+
+function getMarketMetadata(manifest) {
+  const explicit = manifest.market && typeof manifest.market === "object" ? manifest.market : {};
+  const author =
+    typeof explicit.author === "string"
+      ? explicit.author
+      : typeof manifest.author === "string"
+        ? manifest.author
+        : manifest.author?.name;
+  const runtimeTypeMap = {
+    source: "integration",
+    transform: "utility",
+    sink: "integration",
+    router: "automation"
+  };
+  const type = explicit.type ?? (allowedTypes.has(manifest.type) ? manifest.type : runtimeTypeMap[manifest.type] ?? "other");
+  const permissions = manifest.permissions.map((permission) =>
+    typeof permission === "string" ? permission : permission?.permission
+  );
+  if (permissions.some((permission) => typeof permission !== "string" || permission.length === 0)) {
+    throw new Error(`Invalid permission metadata for ${manifest.id}.`);
+  }
+  return { author, type, permissions };
 }
 
 function validateMarketIndex(index) {
