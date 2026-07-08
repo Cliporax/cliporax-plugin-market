@@ -1,0 +1,76 @@
+{
+  "id": "com.cliporax.translate",
+  "name": "Translate",
+  "description": "Translate text clipboard items using LibreTranslate or DeepL. Clipboard text is sent only when you click Translate.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Cliporax"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Cliporax/cliporax-plugin-market",
+  "repository": "https://github.com/Cliporax/cliporax-plugin-market",
+  "keywords": ["translate", "translation", "libretranslate", "deepl", "utility"],
+  "type": "transform",
+  "permissions": [
+    {
+      "permission": "ui:extension",
+      "reason": "Add a translate action to text clipboard cards.",
+      "required": true
+    },
+    {
+      "permission": "clipboard:read",
+      "reason": "Read selected text clipboard items for translation.",
+      "required": true
+    },
+    {
+      "permission": "clipboard:write",
+      "reason": "Copy translated text to the system clipboard when requested.",
+      "required": false
+    },
+    {
+      "permission": "network:fetch",
+      "reason": "Send text to the selected translation provider only after you click Translate.",
+      "required": true
+    },
+    {
+      "permission": "system:storage",
+      "reason": "Store provider settings and API keys locally on this device.",
+      "required": true
+    }
+  ],
+  "extensions": [
+    {
+      "point": "card",
+      "component": "TranslateButton",
+      "condition": "item.type === 'text'",
+      "priority": 30
+    },
+    {
+      "point": "settings-panel",
+      "component": "TranslateSettings",
+      "priority": 30
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "default": {
+      "provider": "libretranslate",
+      "endpoint": "http://localhost:5000",
+      "apiKey": "",
+      "sourceLanguage": "auto",
+      "targetLanguage": "zh",
+      "maxCharsPerRequest": 4000,
+      "preserveFormatting": true
+    }
+  },
+  "minAppVersion": "1.1.0",
+  "compatibility": {
+    "platforms": ["linux", "macos", "windows"]
+  },
+  "icon": "assets/icon.svg",
+  "main": "main.js",
+  "market": {
+    "author": "Cliporax",
+    "type": "utility"
+  }
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Translate">
+  <rect width="128" height="128" rx="26" fill="#2563eb"/>
+  <path d="M28 32h42a10 10 0 0 1 10 10v30a10 10 0 0 1-10 10H52L36 98V82h-8a10 10 0 0 1-10-10V42a10 10 0 0 1 10-10Z" fill="#eff6ff"/>
+  <path d="M61 49H51v21h-8V49H33v-7h28v7Z" fill="#1d4ed8"/>
+  <path d="M59 58h41a10 10 0 0 1 10 10v24a10 10 0 0 1-10 10h-8v14l-14-14H59a10 10 0 0 1-10-10V68a10 10 0 0 1 10-10Z" fill="#bfdbfe"/>
+  <path d="M69 91c8-4 15-11 19-23l7 2c-5 14-13 23-23 28l-3-7Z" fill="#1e40af"/>
+  <path d="M66 71h31v7H66v-7Z" fill="#1e40af"/>
+  <path d="M78 64h7v12h-7V64Z" fill="#1e40af"/>
+</svg>
