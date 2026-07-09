@@ -1,5 +1,11 @@
 type Theme = "light" | "dark";
-type ProviderId = "libretranslate" | "deepl";
+type ProviderId =
+  | "mymemory"
+  | "youdao_public"
+  | "microsoft_edge"
+  | "google_public"
+  | "libretranslate"
+  | "deepl";
 type TranslateStatus = "idle" | "loading" | "success" | "error";
 
 interface ClipboardItem {
@@ -81,6 +87,12 @@ interface Window {
 
 const PLUGIN_ID = "com.cliporax.translate";
 const SETTINGS_KEY = `${PLUGIN_ID}:settings`;
+const MYMEMORY_ENDPOINT = "https://api.mymemory.translated.net/get";
+const YOUDAO_PUBLIC_ENDPOINT = "https://aidemo.youdao.com/trans";
+const MICROSOFT_EDGE_ENDPOINT = "https://api-edge.cognitive.microsofttranslator.com/translate";
+const GOOGLE_PUBLIC_ENDPOINT = "https://translate.googleapis.com/translate_a/single";
+const LIBRETRANSLATE_ENDPOINT = "https://libretranslate.com/translate";
+const DEEPL_ENDPOINT = "https://api-free.deepl.com/v2/translate";
 
 const languageOptions = [
   ["auto", "Auto detect"],
@@ -97,8 +109,8 @@ const languageOptions = [
 ];
 
 const defaultSettings = (): TranslateSettings => ({
-  provider: "libretranslate",
-  endpoint: "http://localhost:5000",
+  provider: "mymemory",
+  endpoint: MYMEMORY_ENDPOINT,
   apiKey: "",
   sourceLanguage: "auto",
   targetLanguage:
@@ -106,33 +118,43 @@ const defaultSettings = (): TranslateSettings => ({
     navigator.language.toLowerCase().startsWith("zh")
       ? "en"
       : "zh",
-  maxCharsPerRequest: 4000,
+  maxCharsPerRequest: 500,
   preserveFormatting: true,
 });
 
 function isProviderId(value: unknown): value is ProviderId {
-  return value === "libretranslate" || value === "deepl";
+  return (
+    value === "mymemory" ||
+    value === "youdao_public" ||
+    value === "microsoft_edge" ||
+    value === "google_public" ||
+    value === "libretranslate" ||
+    value === "deepl"
+  );
 }
 
 function loadSettings(config: Record<string, unknown> = {}): TranslateSettings {
-  const fallback = { ...defaultSettings(), ...config };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return normalizeSettings(fallback);
-    return normalizeSettings({ ...fallback, ...JSON.parse(raw) });
+    const localSettings =
+      raw && raw.trim() ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    return normalizeSettings({ ...defaultSettings(), ...localSettings, ...config });
   } catch {
-    return normalizeSettings(fallback);
+    return normalizeSettings({ ...defaultSettings(), ...config });
   }
 }
 
 function normalizeSettings(value: Record<string, unknown>): TranslateSettings {
-  const provider = isProviderId(value.provider) ? value.provider : "libretranslate";
-  const endpoint =
-    typeof value.endpoint === "string" && value.endpoint.trim()
-      ? value.endpoint.trim()
-      : provider === "deepl"
-        ? "https://api-free.deepl.com/v2/translate"
-        : "http://localhost:5000";
+  const rawProvider = isProviderId(value.provider) ? value.provider : "mymemory";
+  const rawEndpoint = typeof value.endpoint === "string" ? value.endpoint.trim() : "";
+  const provider =
+    rawProvider === "libretranslate" && rawEndpoint.includes("localhost:5000")
+      ? "mymemory"
+      : rawProvider;
+  const endpoint = normalizeEndpoint(
+    provider,
+    rawEndpoint,
+  );
   const maxChars = Number(value.maxCharsPerRequest);
 
   return {
@@ -150,9 +172,63 @@ function normalizeSettings(value: Record<string, unknown>): TranslateSettings {
     maxCharsPerRequest:
       Number.isFinite(maxChars) && maxChars > 0
         ? Math.min(Math.floor(maxChars), 50000)
-        : 4000,
+        : provider === "mymemory"
+          ? 500
+          : 4000,
     preserveFormatting: value.preserveFormatting !== false,
   };
+}
+
+function normalizeEndpoint(provider: ProviderId, endpoint: string): string {
+  if (provider === "youdao_public") {
+    if (!endpoint || isKnownProviderEndpoint(endpoint, ["youdao"])) {
+      return YOUDAO_PUBLIC_ENDPOINT;
+    }
+    return endpoint;
+  }
+  if (provider === "microsoft_edge") {
+    if (!endpoint || isKnownProviderEndpoint(endpoint, ["microsoft"])) {
+      return MICROSOFT_EDGE_ENDPOINT;
+    }
+    return endpoint;
+  }
+  if (provider === "google_public") {
+    if (!endpoint || isKnownProviderEndpoint(endpoint, ["google"])) {
+      return GOOGLE_PUBLIC_ENDPOINT;
+    }
+    return endpoint;
+  }
+  if (provider === "mymemory") {
+    if (!endpoint || isKnownProviderEndpoint(endpoint, ["mymemory"])) {
+      return MYMEMORY_ENDPOINT;
+    }
+    return endpoint;
+  }
+  if (provider === "deepl") {
+    if (!endpoint || isKnownProviderEndpoint(endpoint, ["deepl"])) {
+      return DEEPL_ENDPOINT;
+    }
+    return endpoint;
+  }
+  if (!endpoint || isKnownProviderEndpoint(endpoint, ["libretranslate"])) {
+    return LIBRETRANSLATE_ENDPOINT;
+  }
+  return endpoint;
+}
+
+function isKnownProviderEndpoint(endpoint: string, keep: string[]): boolean {
+  const checks: Record<string, string[]> = {
+    mymemory: ["mymemory.translated.net"],
+    youdao: ["aidemo.youdao.com"],
+    microsoft: ["api-edge.cognitive.microsofttranslator.com"],
+    google: ["translate.googleapis.com"],
+    libretranslate: ["localhost:5000", "libretranslate.com"],
+    deepl: ["deepl.com"],
+  };
+  return Object.entries(checks).some(([provider, fragments]) => {
+    if (keep.includes(provider)) return false;
+    return fragments.some((fragment) => endpoint.includes(fragment));
+  });
 }
 
 function saveSettings(settings: TranslateSettings): void {
@@ -189,7 +265,8 @@ function ensureStyles(): void {
 .cliporax-translate-action{width:22px;height:22px;border:0;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;font-weight:700;line-height:1;background:rgba(37,99,235,.14);color:#2563eb}
 .cliporax-translate-action:hover{background:rgba(37,99,235,.24)}
 .cliporax-translate-popover{position:fixed;z-index:2147483640;width:min(420px,calc(100vw - 24px));max-height:min(620px,calc(100vh - 24px));overflow:auto;border:1px solid var(--translate-border);border-radius:8px;background:var(--translate-bg);color:var(--translate-text);box-shadow:0 20px 50px rgba(15,23,42,.25);font:13px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.cliporax-translate-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid var(--translate-border);font-weight:700}
+.cliporax-translate-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid var(--translate-border);font-weight:700;cursor:grab;user-select:none;touch-action:none}
+.cliporax-translate-header.dragging{cursor:grabbing}
 .cliporax-translate-close{border:0;background:transparent;color:var(--translate-muted);font-size:18px;line-height:1;cursor:pointer}
 .cliporax-translate-body{display:grid;gap:10px;padding:12px}
 .cliporax-translate-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -265,9 +342,109 @@ function libreEndpoint(endpoint: string): string {
   return base.endsWith("/translate") ? base : `${base}/translate`;
 }
 
+function myMemoryEndpoint(endpoint: string): string {
+  const base = endpoint.replace(/\/+$/, "");
+  return base.endsWith("/get") ? base : `${base}/get`;
+}
+
+function googleEndpoint(endpoint: string): string {
+  const base = endpoint.replace(/\/+$/, "");
+  return base.endsWith("/single") ? base : `${base}/single`;
+}
+
+function utf8ByteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+function toMyMemoryLanguage(language: string): string {
+  if (language === "zh") return "zh-CN";
+  return language;
+}
+
+function inferSourceLanguage(text: string, target: string): string {
+  if (/[\u3040-\u30ff]/.test(text)) return "ja";
+  if (/[\uac00-\ud7af]/.test(text)) return "ko";
+  if (/[\u4e00-\u9fff]/.test(text)) return "zh-CN";
+  if (/[\u0400-\u04ff]/.test(text)) return "ru";
+  return target === "en" ? "zh-CN" : "en";
+}
+
+async function translateWithMyMemory(input: TranslateInput): Promise<TranslateResult> {
+  const provider = "MyMemory";
+  const byteLength = utf8ByteLength(input.text);
+  if (byteLength > 500) {
+    throw makeProviderError(
+      provider,
+      "text_too_long",
+      `MyMemory free requests are limited to 500 UTF-8 bytes; this text is ${byteLength} bytes.`,
+      false,
+    );
+  }
+
+  const endpoint = input.endpoint?.trim() || MYMEMORY_ENDPOINT;
+  const target = toMyMemoryLanguage(input.target);
+  const source =
+    input.source && input.source !== "auto"
+      ? toMyMemoryLanguage(input.source)
+      : inferSourceLanguage(input.text, target);
+  const url = new URL(myMemoryEndpoint(endpoint));
+  url.searchParams.set("q", input.text);
+  url.searchParams.set("langpair", `${source}|${target}`);
+  url.searchParams.set("mt", "1");
+  if (input.apiKey) url.searchParams.set("key", input.apiKey);
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+  } catch {
+    throw makeProviderError(provider, "network_error", "Could not reach MyMemory. Check the network connection.", true);
+  }
+
+  const body = await response.text();
+  if (!response.ok) throw mapHttpError(provider, response.status, body);
+
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    throw makeProviderError(provider, "provider_error", "MyMemory returned an invalid response.", true);
+  }
+
+  if (typeof json.responseStatus === "number" && json.responseStatus >= 400) {
+    const detail =
+      typeof json.responseDetails === "string" && json.responseDetails.trim()
+        ? json.responseDetails
+        : `MyMemory returned status ${json.responseStatus}.`;
+    throw makeProviderError(provider, json.responseStatus === 429 ? "rate_limited" : "provider_error", detail, json.responseStatus >= 500);
+  }
+
+  const responseData = json.responseData;
+  const translated =
+    responseData && typeof responseData === "object"
+      ? (responseData as Record<string, unknown>).translatedText
+      : undefined;
+  const text =
+    typeof translated === "string"
+      ? translated
+      : undefined;
+
+  if (!text) {
+    const detail =
+      typeof json.responseDetails === "string" && json.responseDetails.trim()
+        ? ` ${json.responseDetails}`
+        : "";
+    throw makeProviderError(provider, "provider_error", `MyMemory response did not include translated text.${detail}`, true);
+  }
+
+  return { text, detectedSource: source, provider };
+}
+
 async function translateWithLibreTranslate(input: TranslateInput): Promise<TranslateResult> {
   const provider = "LibreTranslate";
-  const endpoint = input.endpoint?.trim() || "http://localhost:5000";
+  const endpoint = input.endpoint?.trim() || LIBRETRANSLATE_ENDPOINT;
   const payload: Record<string, unknown> = {
     q: input.text,
     source: input.source || "auto",
@@ -313,6 +490,169 @@ async function translateWithLibreTranslate(input: TranslateInput): Promise<Trans
   return { text, detectedSource, provider };
 }
 
+function toYoudaoLanguage(language: string): string {
+  if (language === "auto") return "Auto";
+  if (language === "zh") return "zh-CHS";
+  return language;
+}
+
+async function translateWithYoudaoPublic(input: TranslateInput): Promise<TranslateResult> {
+  const provider = "Youdao public";
+  const endpoint = input.endpoint?.trim() || YOUDAO_PUBLIC_ENDPOINT;
+  const params = new URLSearchParams();
+  params.set("q", input.text);
+  params.set("from", toYoudaoLanguage(input.source));
+  params.set("to", toYoudaoLanguage(input.target));
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body: params.toString(),
+    });
+  } catch {
+    throw makeProviderError(provider, "network_error", "Could not reach the Youdao public endpoint. It may be blocked by network or CORS policy.", true);
+  }
+
+  const body = await response.text();
+  if (!response.ok) throw mapHttpError(provider, response.status, body);
+
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    throw makeProviderError(provider, "provider_error", "Youdao returned an invalid response.", true);
+  }
+
+  const translation = json.translation;
+  const text =
+    Array.isArray(translation) && typeof translation[0] === "string"
+      ? translation.join("\n")
+      : typeof json.translation === "string"
+        ? json.translation
+        : undefined;
+  if (!text) {
+    const errorCode = typeof json.errorCode === "string" ? ` Error code: ${json.errorCode}.` : "";
+    throw makeProviderError(provider, "provider_error", `Youdao response did not include translated text.${errorCode}`, true);
+  }
+
+  return { text, detectedSource: input.source === "auto" ? undefined : input.source, provider };
+}
+
+function toMicrosoftLanguage(language: string): string {
+  if (language === "zh") return "zh-Hans";
+  return language;
+}
+
+async function translateWithMicrosoftEdge(input: TranslateInput): Promise<TranslateResult> {
+  const provider = "Microsoft Edge";
+  const endpoint = input.endpoint?.trim() || MICROSOFT_EDGE_ENDPOINT;
+  const url = new URL(endpoint);
+  url.searchParams.set("api-version", "3.0");
+  url.searchParams.set("to", toMicrosoftLanguage(input.target));
+  if (input.source && input.source !== "auto") {
+    url.searchParams.set("from", toMicrosoftLanguage(input.source));
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([{ Text: input.text }]),
+    });
+  } catch {
+    throw makeProviderError(provider, "network_error", "Could not reach the Microsoft Edge translation endpoint. It may be blocked by network or CORS policy.", true);
+  }
+
+  const body = await response.text();
+  if (!response.ok) throw mapHttpError(provider, response.status, body);
+
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    throw makeProviderError(provider, "provider_error", "Microsoft Edge returned an invalid response.", true);
+  }
+
+  if (!Array.isArray(json)) {
+    throw makeProviderError(provider, "provider_error", "Microsoft Edge response did not include translated text.", true);
+  }
+
+  const first = json[0] as Record<string, unknown> | undefined;
+  const translations = first?.translations;
+  const translated =
+    Array.isArray(translations) && translations[0] && typeof translations[0] === "object"
+      ? (translations[0] as Record<string, unknown>).text
+      : undefined;
+  const detected =
+    first?.detectedLanguage && typeof first.detectedLanguage === "object"
+      ? (first.detectedLanguage as Record<string, unknown>).language
+      : undefined;
+
+  if (typeof translated !== "string") {
+    throw makeProviderError(provider, "provider_error", "Microsoft Edge response did not include translated text.", true);
+  }
+
+  return {
+    text: translated,
+    detectedSource: typeof detected === "string" ? detected : undefined,
+    provider,
+  };
+}
+
+async function translateWithGooglePublic(input: TranslateInput): Promise<TranslateResult> {
+  const provider = "Google public";
+  const endpoint = input.endpoint?.trim() || GOOGLE_PUBLIC_ENDPOINT;
+  const url = new URL(googleEndpoint(endpoint));
+  url.searchParams.set("client", "gtx");
+  url.searchParams.set("sl", input.source || "auto");
+  url.searchParams.set("tl", input.target);
+  url.searchParams.set("dt", "t");
+  url.searchParams.set("q", input.text);
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+  } catch {
+    throw makeProviderError(provider, "network_error", "Could not reach the Google public endpoint. It may be blocked by network or CORS policy.", true);
+  }
+
+  const body = await response.text();
+  if (!response.ok) throw mapHttpError(provider, response.status, body);
+
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    throw makeProviderError(provider, "provider_error", "Google returned an invalid response.", true);
+  }
+
+  if (!Array.isArray(json) || !Array.isArray(json[0])) {
+    throw makeProviderError(provider, "provider_error", "Google response did not include translated text.", true);
+  }
+
+  const text = json[0]
+    .map((part: unknown) => Array.isArray(part) && typeof part[0] === "string" ? part[0] : "")
+    .join("");
+  const detectedSource = typeof json[2] === "string" ? json[2] : undefined;
+  if (!text) {
+    throw makeProviderError(provider, "provider_error", "Google response did not include translated text.", true);
+  }
+
+  return { text, detectedSource, provider };
+}
+
 function toDeepLTarget(language: string): string {
   if (language === "zh") return "ZH";
   if (language === "en") return "EN-US";
@@ -331,7 +671,7 @@ async function translateWithDeepL(input: TranslateInput): Promise<TranslateResul
     throw makeProviderError(provider, "missing_config", "DeepL requires an API key.", false);
   }
 
-  const endpoint = input.endpoint?.trim() || "https://api-free.deepl.com/v2/translate";
+  const endpoint = input.endpoint?.trim() || DEEPL_ENDPOINT;
   const params = new URLSearchParams();
   params.set("text", input.text);
   params.set("target_lang", toDeepLTarget(input.target));
@@ -400,15 +740,38 @@ async function translateText(
     preserveFormatting: settings.preserveFormatting,
   };
 
-  return settings.provider === "deepl"
-    ? translateWithDeepL(input)
-    : translateWithLibreTranslate(input);
+  if (settings.provider === "google_public") return translateWithGooglePublic(input);
+  if (settings.provider === "microsoft_edge") return translateWithMicrosoftEdge(input);
+  if (settings.provider === "youdao_public") return translateWithYoudaoPublic(input);
+  if (settings.provider === "deepl") return translateWithDeepL(input);
+  if (settings.provider === "libretranslate") return translateWithLibreTranslate(input);
+  return translateWithMyMemory(input);
 }
 
 function renderLanguageSelect(value: string, includeAuto: boolean): HTMLSelectElement {
   const select = el("select");
   for (const [code, label] of languageOptions) {
     if (!includeAuto && code === "auto") continue;
+    const option = el("option");
+    option.value = code;
+    option.textContent = label;
+    if (code === value) option.selected = true;
+    select.appendChild(option);
+  }
+  return select;
+}
+
+function renderProviderSelect(value: ProviderId): HTMLSelectElement {
+  const select = el("select");
+  const options: Array<[ProviderId, string]> = [
+    ["mymemory", "MyMemory free"],
+    ["youdao_public", "Youdao public"],
+    ["microsoft_edge", "Microsoft Edge public"],
+    ["google_public", "Google public"],
+    ["libretranslate", "LibreTranslate"],
+    ["deepl", "DeepL API Free"],
+  ];
+  for (const [code, label] of options) {
     const option = el("option");
     option.value = code;
     option.textContent = label;
@@ -426,13 +789,76 @@ function renderField(labelText: string, control: HTMLElement): HTMLElement {
 }
 
 function updateEndpointForProvider(settings: TranslateSettings): TranslateSettings {
-  if (settings.provider === "deepl" && settings.endpoint.includes("localhost:5000")) {
-    return { ...settings, endpoint: "https://api-free.deepl.com/v2/translate" };
-  }
-  if (settings.provider === "libretranslate" && settings.endpoint.includes("deepl.com")) {
-    return { ...settings, endpoint: "http://localhost:5000" };
-  }
-  return settings;
+  const providerLimit =
+    settings.provider === "mymemory" && settings.maxCharsPerRequest > 500
+      ? 500
+      : settings.maxCharsPerRequest;
+  return {
+    ...settings,
+    endpoint: normalizeEndpoint(settings.provider, settings.endpoint),
+    maxCharsPerRequest: providerLimit,
+  };
+}
+
+function providerLabel(provider: ProviderId): string {
+  if (provider === "deepl") return "DeepL";
+  if (provider === "libretranslate") return "LibreTranslate";
+  if (provider === "google_public") return "Google public";
+  if (provider === "microsoft_edge") return "Microsoft Edge public";
+  if (provider === "youdao_public") return "Youdao public";
+  return "MyMemory";
+}
+
+function providerNote(provider: ProviderId): string {
+  if (provider === "deepl") return "DeepL API Free requires your own API key.";
+  if (provider === "libretranslate") return "LibreTranslate availability depends on the configured public or self-hosted endpoint.";
+  if (provider === "google_public") return "Google public uses an undocumented web endpoint and may be rate limited or blocked.";
+  if (provider === "microsoft_edge") return "Microsoft Edge public uses an unofficial free endpoint and may change or reject requests.";
+  if (provider === "youdao_public") return "Youdao public uses a demo endpoint that works best for short text and may change.";
+  return "MyMemory public API works without a key for short text and has strict free limits.";
+}
+
+function makeDraggable(popover: HTMLElement, handle: HTMLElement): void {
+  let dragging = false;
+  let offsetX = 0;
+  let offsetY = 0;
+  let pointerId = 0;
+
+  const clampPosition = (left: number, top: number) => {
+    const margin = 8;
+    const maxLeft = Math.max(margin, window.innerWidth - popover.offsetWidth - margin);
+    const maxTop = Math.max(margin, window.innerHeight - popover.offsetHeight - margin);
+    popover.style.left = `${Math.min(Math.max(margin, left), maxLeft)}px`;
+    popover.style.top = `${Math.min(Math.max(margin, top), maxTop)}px`;
+  };
+
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.target instanceof HTMLElement && event.target.closest("button,input,select,textarea,a")) return;
+    const rect = popover.getBoundingClientRect();
+    dragging = true;
+    pointerId = event.pointerId;
+    offsetX = event.clientX - rect.left;
+    offsetY = event.clientY - rect.top;
+    handle.classList.add("dragging");
+    handle.setPointerCapture(event.pointerId);
+  });
+
+  handle.addEventListener("pointermove", (event) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    event.preventDefault();
+    clampPosition(event.clientX - offsetX, event.clientY - offsetY);
+  });
+
+  const stopDragging = (event: PointerEvent) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    dragging = false;
+    handle.classList.remove("dragging");
+    if (handle.hasPointerCapture(event.pointerId)) {
+      handle.releasePointerCapture(event.pointerId);
+    }
+  };
+  handle.addEventListener("pointerup", stopDragging);
+  handle.addEventListener("pointercancel", stopDragging);
 }
 
 function createPopover(anchor: HTMLElement, props: ExtensionProps): HTMLElement {
@@ -450,6 +876,7 @@ function createPopover(anchor: HTMLElement, props: ExtensionProps): HTMLElement 
   applyThemeStyles(popover, props.context.theme);
 
   const header = el("div", "cliporax-translate-header");
+  header.title = "Drag to move";
   header.append(el("span", undefined, "Translate"));
   const close = el("button", "cliporax-translate-close", "x");
   close.type = "button";
@@ -458,6 +885,22 @@ function createPopover(anchor: HTMLElement, props: ExtensionProps): HTMLElement 
 
   const body = el("div", "cliporax-translate-body");
   popover.append(header, body);
+  makeDraggable(popover, header);
+
+  async function runTranslation(): Promise<void> {
+    status = "loading";
+    currentError = null;
+    render();
+    try {
+      currentResult = await translateText(settings, text);
+      status = "success";
+    } catch (error) {
+      currentResult = null;
+      currentError = normalizeError(error, settings.provider);
+      status = "error";
+    }
+    render();
+  }
 
   function render(): void {
     body.replaceChildren();
@@ -465,9 +908,24 @@ function createPopover(anchor: HTMLElement, props: ExtensionProps): HTMLElement 
     const privacy = el(
       "div",
       "cliporax-translate-muted",
-      `Text is sent to ${settings.provider === "deepl" ? "DeepL" : "LibreTranslate"} only when you click Translate. Endpoint: ${settings.endpoint}`,
+      `Text is sent to ${providerLabel(settings.provider)} only when you use Translate from a text card. Endpoint: ${settings.endpoint}`,
     );
     body.append(privacy);
+
+    const providerSelect = renderProviderSelect(settings.provider);
+    providerSelect.addEventListener("change", () => {
+      settings = updateEndpointForProvider({
+        ...settings,
+        provider: providerSelect.value as ProviderId,
+      });
+      saveSettings(settings);
+      currentError = null;
+      currentResult = null;
+      status = "idle";
+      render();
+    });
+    body.append(renderField("Provider", providerSelect));
+    body.append(el("div", "cliporax-translate-muted", providerNote(settings.provider)));
 
     const original = el("div", "cliporax-translate-text", text || "No text content.");
     body.append(renderField(`Original (${text.length} chars)`, original));
@@ -515,19 +973,8 @@ function createPopover(anchor: HTMLElement, props: ExtensionProps): HTMLElement 
     const translate = el("button", "cliporax-translate-button", status === "loading" ? "Translating" : "Translate");
     translate.type = "button";
     translate.disabled = status === "loading" || !text;
-    translate.addEventListener("click", async () => {
-      status = "loading";
-      currentError = null;
-      render();
-      try {
-        currentResult = await translateText(settings, text);
-        status = "success";
-      } catch (error) {
-        currentResult = null;
-        currentError = normalizeError(error, settings.provider);
-        status = "error";
-      }
-      render();
+    translate.addEventListener("click", () => {
+      void runTranslation();
     });
 
     const copy = el("button", "cliporax-translate-button secondary", "Copy result");
@@ -553,94 +1000,14 @@ function createPopover(anchor: HTMLElement, props: ExtensionProps): HTMLElement 
 
     actions.append(translate, copy, swap);
     body.append(actions);
-
-    body.append(renderSettingsForm());
-  }
-
-  function renderSettingsForm(): HTMLElement {
-    const panel = el("details", "cliporax-translate-settings");
-    const summary = el("summary", undefined, "Provider settings");
-    panel.append(summary);
-
-    const form = el("div", "cliporax-translate-grid");
-    form.style.marginTop = "8px";
-
-    const provider = el("select");
-    for (const [value, label] of [
-      ["libretranslate", "LibreTranslate"],
-      ["deepl", "DeepL"],
-    ]) {
-      const option = el("option");
-      option.value = value;
-      option.textContent = label;
-      if (settings.provider === value) option.selected = true;
-      provider.appendChild(option);
-    }
-    provider.addEventListener("change", () => {
-      settings = updateEndpointForProvider({
-        ...settings,
-        provider: provider.value as ProviderId,
-      });
-      saveSettings(settings);
-      render();
-    });
-
-    const endpoint = el("input");
-    endpoint.value = settings.endpoint;
-    endpoint.placeholder = "Provider endpoint";
-    endpoint.addEventListener("change", () => {
-      settings = { ...settings, endpoint: endpoint.value.trim() };
-      saveSettings(settings);
-      render();
-    });
-
-    const apiKey = el("input");
-    apiKey.type = "password";
-    apiKey.value = settings.apiKey;
-    apiKey.placeholder = settings.provider === "deepl" ? "Required for DeepL" : "Optional";
-    apiKey.addEventListener("change", () => {
-      settings = { ...settings, apiKey: apiKey.value };
-      saveSettings(settings);
-    });
-
-    const maxChars = el("input");
-    maxChars.type = "number";
-    maxChars.min = "1";
-    maxChars.max = "50000";
-    maxChars.value = String(settings.maxCharsPerRequest);
-    maxChars.addEventListener("change", () => {
-      settings = normalizeSettings({
-        ...settings,
-        maxCharsPerRequest: Number(maxChars.value),
-      });
-      saveSettings(settings);
-      render();
-    });
-
-    form.append(
-      renderField("Provider", provider),
-      renderField("Endpoint", endpoint),
-      renderField("API key", apiKey),
-      renderField("Max chars", maxChars),
-    );
-
-    const preserve = el("label", "cliporax-translate-row");
-    const preserveCheckbox = el("input");
-    preserveCheckbox.type = "checkbox";
-    preserveCheckbox.checked = settings.preserveFormatting;
-    preserveCheckbox.addEventListener("change", () => {
-      settings = { ...settings, preserveFormatting: preserveCheckbox.checked };
-      saveSettings(settings);
-    });
-    preserve.append(preserveCheckbox, document.createTextNode(" Preserve formatting where supported"));
-
-    panel.append(form, preserve);
-    return panel;
   }
 
   render();
   document.body.appendChild(popover);
   positionPopover(popover, anchor);
+  if (text) {
+    void runTranslation();
+  }
 
   const onDocumentClick = (event: MouseEvent) => {
     if (
