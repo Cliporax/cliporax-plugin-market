@@ -13,6 +13,8 @@ const messages = isChinese
       noProfile: "尚未配置云同步",
       encrypted: "已加密",
       empty: "请在本地文件或文件夹的剪贴板条目上点击同步按钮。",
+      loading: "正在加载文件同步…",
+      loadFailed: "文件同步加载失败。",
       files: "个文件",
       device: "设备",
       largeWarning: "这是大型快照，确认后才会占用磁盘并开始上传。",
@@ -35,6 +37,8 @@ const messages = isChinese
       noProfile: "No cloud sync profile configured",
       encrypted: "encrypted",
       empty: "Use the sync action on a local file or folder clipboard item.",
+      loading: "Loading File Sync…",
+      loadFailed: "File Sync failed to load.",
       files: "files",
       device: "device",
       largeWarning: "Large snapshot: disk staging and upload start only after confirmation.",
@@ -286,6 +290,46 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
   const list = document.createElement("div");
   list.style.cssText = "flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px;";
   root.append(toolbar, message, list);
+  renderStatus(messages.loading);
+
+  function renderStatus(text: string, tone: "muted" | "error" = "muted", action?: HTMLButtonElement): void {
+    list.replaceChildren();
+    const state = document.createElement("div");
+    state.style.cssText = `
+      margin:auto;
+      max-width:420px;
+      padding:24px 14px;
+      text-align:center;
+      font-size:12px;
+      line-height:1.5;
+      color:${tone === "error" ? "#ef4444" : colors.muted};
+    `;
+    const label = document.createElement("div");
+    label.textContent = text;
+    state.append(label);
+    if (action) {
+      action.style.marginTop = "10px";
+      state.append(action);
+    }
+    list.append(state);
+  }
+
+  function renderError(error: unknown): void {
+    const detail = error instanceof Error ? error.message : String(error);
+    message.textContent = messages.loadFailed;
+    renderStatus(detail || messages.loadFailed, "error", createButton(messages.retry, refreshView));
+  }
+
+  async function refreshView(): Promise<void> {
+    message.textContent = "";
+    renderStatus(messages.loading);
+    try {
+      await loadProfiles();
+      await loadEntries();
+    } catch (error) {
+      renderError(error);
+    }
+  }
 
   async function run(action: () => Promise<void>): Promise<void> {
     message.textContent = "";
@@ -293,7 +337,7 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
       await action();
       await loadEntries();
     } catch (error) {
-      message.textContent = error instanceof Error ? error.message : String(error);
+      renderError(error);
     }
   }
 
@@ -337,10 +381,7 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
     copySelectedButton.disabled = selectedEntries.size === 0;
     list.replaceChildren();
     if (entries.length === 0) {
-      const empty = document.createElement("div");
-      empty.textContent = messages.empty;
-      empty.style.cssText = `padding:24px 8px;text-align:center;font-size:12px;color:${colors.muted};`;
-      list.append(empty);
+      renderStatus(messages.empty);
       return;
     }
     for (const entry of entries) {
@@ -456,10 +497,7 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
     }
   }
 
-  void run(async () => {
-    await loadProfiles();
-    await loadEntries();
-  });
+  void refreshView();
   const poll = window.setInterval(() => {
     if (!root.isConnected) {
       window.clearInterval(poll);
