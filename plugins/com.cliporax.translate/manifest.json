@@ -1,15 +1,15 @@
 {
   "id": "com.cliporax.translate",
   "name": "Translate",
-  "description": "Translate text clipboard items using LibreTranslate or DeepL. Clipboard text is sent only when you click Translate.",
-  "version": "0.1.0",
+  "description": "Translate text clipboard items using configurable free or free-tier providers. Clipboard text is sent only when you use Translate.",
+  "version": "0.1.1",
   "author": {
     "name": "Cliporax"
   },
   "license": "MIT",
   "homepage": "https://github.com/Cliporax/cliporax-plugin-market",
   "repository": "https://github.com/Cliporax/cliporax-plugin-market",
-  "keywords": ["translate", "translation", "libretranslate", "deepl", "utility"],
+  "keywords": ["translate", "translation", "mymemory", "youdao", "microsoft", "google", "libretranslate", "deepl", "utility"],
   "type": "transform",
   "permissions": [
     {
@@ -29,7 +29,7 @@
     },
     {
       "permission": "network:fetch",
-      "reason": "Send text to the selected translation provider only after you click Translate.",
+      "reason": "Send text to the selected translation provider only after you use Translate.",
       "required": true
     },
     {
@@ -53,13 +53,99 @@
   ],
   "configSchema": {
     "type": "object",
+    "fields": [
+      {
+        "key": "provider",
+        "type": "select",
+        "label": "Provider",
+        "description": "Translation service used by the card action. Public web/demo endpoints may change, throttle, or be blocked by CORS.",
+        "default": "mymemory",
+        "options": [
+          { "value": "mymemory", "label": "MyMemory free" },
+          { "value": "youdao_public", "label": "Youdao public demo" },
+          { "value": "microsoft_edge", "label": "Microsoft Edge public" },
+          { "value": "google_public", "label": "Google public web" },
+          { "value": "libretranslate", "label": "LibreTranslate" },
+          { "value": "deepl", "label": "DeepL API Free" }
+        ]
+      },
+      {
+        "key": "endpoint",
+        "type": "text",
+        "label": "Endpoint",
+        "description": "Provider endpoint. Changing provider resets known old endpoints in the plugin UI.",
+        "default": "https://api.mymemory.translated.net/get"
+      },
+      {
+        "key": "apiKey",
+        "type": "text",
+        "label": "API key",
+        "description": "Optional for MyMemory and LibreTranslate, unused by public web/demo providers, required for DeepL.",
+        "default": ""
+      },
+      {
+        "key": "sourceLanguage",
+        "type": "select",
+        "label": "Source language",
+        "description": "Use Auto detect unless the provider rejects auto detection.",
+        "default": "auto",
+        "options": [
+          { "value": "auto", "label": "Auto detect" },
+          { "value": "zh", "label": "Chinese" },
+          { "value": "en", "label": "English" },
+          { "value": "ja", "label": "Japanese" },
+          { "value": "ko", "label": "Korean" },
+          { "value": "fr", "label": "French" },
+          { "value": "de", "label": "German" },
+          { "value": "es", "label": "Spanish" },
+          { "value": "it", "label": "Italian" },
+          { "value": "pt", "label": "Portuguese" },
+          { "value": "ru", "label": "Russian" }
+        ]
+      },
+      {
+        "key": "targetLanguage",
+        "type": "select",
+        "label": "Target language",
+        "description": "Language used when the card action translates immediately.",
+        "default": "zh",
+        "options": [
+          { "value": "zh", "label": "Chinese" },
+          { "value": "en", "label": "English" },
+          { "value": "ja", "label": "Japanese" },
+          { "value": "ko", "label": "Korean" },
+          { "value": "fr", "label": "French" },
+          { "value": "de", "label": "German" },
+          { "value": "es", "label": "Spanish" },
+          { "value": "it", "label": "Italian" },
+          { "value": "pt", "label": "Portuguese" },
+          { "value": "ru", "label": "Russian" }
+        ]
+      },
+      {
+        "key": "maxCharsPerRequest",
+        "type": "number",
+        "label": "Maximum characters",
+        "description": "Guardrail before sending text to the provider. MyMemory free requests work best with short text.",
+        "default": 500,
+        "min": 1,
+        "max": 50000
+      },
+      {
+        "key": "preserveFormatting",
+        "type": "boolean",
+        "label": "Preserve formatting",
+        "description": "Ask providers to preserve formatting where supported.",
+        "default": true
+      }
+    ],
     "default": {
-      "provider": "libretranslate",
-      "endpoint": "http://localhost:5000",
+      "provider": "mymemory",
+      "endpoint": "https://api.mymemory.translated.net/get",
       "apiKey": "",
       "sourceLanguage": "auto",
       "targetLanguage": "zh",
-      "maxCharsPerRequest": 4000,
+      "maxCharsPerRequest": 500,
       "preserveFormatting": true
     }
   },
