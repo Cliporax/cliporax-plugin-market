@@ -1,19 +1,63 @@
 {
   "id": "com.cliporax.qrscanner",
   "name": "QR Scanner",
-  "description": "Scans QR codes from image clipboard items.",
+  "description": "Scans QR codes from a selected screen region and copies the result.",
   "version": "0.1.0",
-  "author": "Cliporax",
+  "author": {
+    "name": "Cliporax"
+  },
   "license": "MIT",
   "homepage": "https://github.com/Cliporax/cliporax-plugin-market",
   "repository": "https://github.com/Cliporax/cliporax-plugin-market",
-  "keywords": ["qr", "scanner", "image"],
-  "type": "utility",
-  "permissions": ["clipboard:read"],
+  "keywords": ["qr", "scanner", "screen", "capture"],
+  "type": "transform",
+  "permissions": [
+    {
+      "permission": "ui:extension",
+      "reason": "Add a QR scanner control to the sidebar.",
+      "required": true
+    },
+    {
+      "permission": "clipboard:write",
+      "reason": "Copy scanned QR code content to the clipboard history.",
+      "required": true
+    },
+    {
+      "permission": "data:write",
+      "reason": "Save scanned QR code content as a new clipboard item.",
+      "required": true
+    }
+  ],
+  "extensions": [
+    {
+      "point": "sidebar",
+      "component": "QRScannerPanel",
+      "priority": 5
+    }
+  ],
+  "configSchema": {
+    "fields": [
+      {
+        "key": "scannerShortcut",
+        "type": "shortcut",
+        "label": "QR scanner shortcut",
+        "description": "Open the QR scanner globally",
+        "default": "Ctrl+Shift+Q",
+        "global": true
+      }
+    ],
+    "default": {
+      "scannerShortcut": "Ctrl+Shift+Q"
+    }
+  },
   "minAppVersion": "0.1.0",
   "compatibility": {
     "platforms": ["linux", "macos", "windows"]
   },
   "icon": "assets/icon.svg",
-  "main": "main.js"
+  "main": "main.js",
+  "market": {
+    "author": "Cliporax",
+    "type": "utility"
+  }
 }

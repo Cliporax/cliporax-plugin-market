@@ -86,7 +86,7 @@ async function compilePluginSources() {
     if (error.code === "ENOENT") return [];
     throw error;
   });
-  const tsc = path.join(root, "node_modules", ".bin", process.platform === "win32" ? "tsc.cmd" : "tsc");
+  const esbuild = path.join(root, "node_modules", ".bin", process.platform === "win32" ? "esbuild.cmd" : "esbuild");
 
   for (const child of children) {
     if (!child.isDirectory()) continue;
@@ -95,26 +95,15 @@ async function compilePluginSources() {
     await ensureRegularFile(sourceEntry, `Plugin ${child.name} must provide TypeScript source at src/main.ts.`);
 
     execFileSync(
-      tsc,
+      esbuild,
       [
-        "--target",
-        "ES2022",
-        "--module",
-        "ES2022",
-        "--moduleResolution",
-        "Bundler",
-        "--rootDir",
-        "src",
-        "--outDir",
-        ".",
-        "--strict",
-        "--noEmitOnError",
-        "--skipLibCheck",
-        "--declaration",
-        "false",
-        "--sourceMap",
-        "false",
-        "src/main.ts"
+        "src/main.ts",
+        "--bundle",
+        "--outfile=main.js",
+        "--format=iife",
+        "--platform=browser",
+        "--target=es2020",
+        "--log-level=warning"
       ],
       {
         cwd: pluginRoot,

@@ -3,17 +3,41 @@
   "name": "QR Code",
   "description": "Generates QR codes from text clipboard items.",
   "version": "0.1.0",
-  "author": "Cliporax",
+  "author": {
+    "name": "Cliporax"
+  },
   "license": "MIT",
   "homepage": "https://github.com/Cliporax/cliporax-plugin-market",
   "repository": "https://github.com/Cliporax/cliporax-plugin-market",
   "keywords": ["qr", "qrcode", "utility"],
-  "type": "utility",
-  "permissions": ["clipboard:read"],
+  "type": "transform",
+  "permissions": [
+    {
+      "permission": "ui:extension",
+      "reason": "Add a QR code action to text clipboard cards.",
+      "required": true
+    },
+    {
+      "permission": "data:read",
+      "reason": "Read text clipboard item content to generate QR codes.",
+      "required": true
+    }
+  ],
+  "extensions": [
+    {
+      "point": "card",
+      "component": "QRCodeButton",
+      "priority": 10
+    }
+  ],
   "minAppVersion": "0.1.0",
   "compatibility": {
     "platforms": ["linux", "macos", "windows"]
   },
   "icon": "assets/icon.svg",
-  "main": "main.js"
+  "main": "main.js",
+  "market": {
+    "author": "Cliporax",
+    "type": "utility"
+  }
 }
