@@ -272,7 +272,12 @@ function ensureStyles(): void {
 .cliporax-translate-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .cliporax-translate-field{display:grid;gap:4px}
 .cliporax-translate-field label{color:var(--translate-muted);font-size:11px;font-weight:650}
-.cliporax-translate-field select,.cliporax-translate-field input{min-height:30px;border:1px solid var(--translate-border);border-radius:6px;background:var(--translate-panel);color:var(--translate-text);padding:4px 8px;font:inherit}
+.cliporax-translate-field input,.cliporax-translate-combobox-trigger{min-height:30px;border:1px solid var(--translate-border);border-radius:6px;background:var(--translate-panel);color:var(--translate-text);padding:4px 8px;font:inherit}
+.cliporax-translate-combobox{position:relative;min-width:0}
+.cliporax-translate-combobox-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;text-align:left}
+.cliporax-translate-combobox-menu{position:absolute;z-index:2147483641;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;border:1px solid var(--translate-border);border-radius:6px;background:var(--translate-bg);box-shadow:0 14px 34px rgba(15,23,42,.26);padding:4px}
+.cliporax-translate-combobox-option{width:100%;min-height:30px;border:0;border-radius:5px;background:transparent;color:var(--translate-text);padding:6px 8px;text-align:left;cursor:pointer;font:inherit}
+.cliporax-translate-combobox-option:hover,.cliporax-translate-combobox-option[aria-selected="true"]{background:var(--translate-panel)}
 .cliporax-translate-text{max-height:120px;overflow:auto;border:1px solid var(--translate-border);border-radius:6px;background:var(--translate-panel);padding:8px;white-space:pre-wrap;overflow-wrap:anywhere}
 .cliporax-translate-result{min-height:72px}
 .cliporax-translate-muted{color:var(--translate-muted)}
@@ -748,21 +753,97 @@ async function translateText(
   return translateWithMyMemory(input);
 }
 
-function renderLanguageSelect(value: string, includeAuto: boolean): HTMLSelectElement {
-  const select = el("select");
-  for (const [code, label] of languageOptions) {
-    if (!includeAuto && code === "auto") continue;
-    const option = el("option");
-    option.value = code;
-    option.textContent = label;
-    if (code === value) option.selected = true;
-    select.appendChild(option);
+type ComboboxElement = HTMLDivElement & { value: string };
+
+function renderCombobox(
+  value: string,
+  options: Array<[string, string]>,
+  ariaLabel: string,
+): ComboboxElement {
+  const root = el("div", "cliporax-translate-combobox") as ComboboxElement;
+  root.value = value;
+
+  const trigger = el("button", "cliporax-translate-combobox-trigger");
+  trigger.type = "button";
+  trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.setAttribute("aria-label", ariaLabel);
+  const label = el("span");
+  const chevron = el("span", undefined, "v");
+  trigger.append(label, chevron);
+
+  const menu = el("div", "cliporax-translate-combobox-menu");
+  menu.setAttribute("role", "listbox");
+  menu.hidden = true;
+
+  const syncLabel = () => {
+    label.textContent =
+      options.find(([code]) => code === root.value)?.[1] ??
+      options[0]?.[1] ??
+      "";
+  };
+  const close = () => {
+    menu.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  };
+  const open = () => {
+    menu.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+  };
+
+  for (const [code, optionLabel] of options) {
+    const option = el("button", "cliporax-translate-combobox-option", optionLabel);
+    option.type = "button";
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", code === value ? "true" : "false");
+    option.onclick = () => {
+      root.value = code;
+      for (const child of Array.from(menu.children)) {
+        child.setAttribute(
+          "aria-selected",
+          child === option ? "true" : "false",
+        );
+      }
+      syncLabel();
+      close();
+      root.dispatchEvent(new Event("change"));
+    };
+    menu.append(option);
   }
-  return select;
+
+  trigger.onclick = () => {
+    if (menu.hidden) open();
+    else close();
+  };
+  trigger.onkeydown = (event) => {
+    if (event.key === "Escape") close();
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      open();
+      (menu.querySelector("button") as HTMLButtonElement | null)?.focus();
+    }
+  };
+  root.addEventListener("focusout", (event) => {
+    if (event.relatedTarget instanceof Node && root.contains(event.relatedTarget)) {
+      return;
+    }
+    close();
+  });
+
+  syncLabel();
+  root.append(trigger, menu);
+  return root;
 }
 
-function renderProviderSelect(value: ProviderId): HTMLSelectElement {
-  const select = el("select");
+function renderLanguageSelect(value: string, includeAuto: boolean): ComboboxElement {
+  return renderCombobox(
+    value,
+    languageOptions.filter(([code]) => includeAuto || code !== "auto"),
+    includeAuto ? "Source language" : "Target language",
+  );
+}
+
+function renderProviderSelect(value: ProviderId): ComboboxElement {
   const options: Array<[ProviderId, string]> = [
     ["mymemory", "MyMemory free"],
     ["youdao_public", "Youdao public"],
@@ -771,14 +852,7 @@ function renderProviderSelect(value: ProviderId): HTMLSelectElement {
     ["libretranslate", "LibreTranslate"],
     ["deepl", "DeepL API Free"],
   ];
-  for (const [code, label] of options) {
-    const option = el("option");
-    option.value = code;
-    option.textContent = label;
-    if (code === value) option.selected = true;
-    select.appendChild(option);
-  }
-  return select;
+  return renderCombobox(value, options, "Translation provider");
 }
 
 function renderField(labelText: string, control: HTMLElement): HTMLElement {
@@ -833,7 +907,7 @@ function makeDraggable(popover: HTMLElement, handle: HTMLElement): void {
   };
 
   handle.addEventListener("pointerdown", (event) => {
-    if (event.target instanceof HTMLElement && event.target.closest("button,input,select,textarea,a")) return;
+    if (event.target instanceof HTMLElement && event.target.closest("button,input,.cliporax-translate-combobox,textarea,a")) return;
     const rect = popover.getBoundingClientRect();
     dragging = true;
     pointerId = event.pointerId;

@@ -21,13 +21,36 @@
       "permission": "system:storage",
       "reason": "Store TODO items locally in browser plugin storage.",
       "required": true
+    },
+    {
+      "permission": "ui:context-menu",
+      "reason": "Add a Move to TODO action to clipboard item context menus.",
+      "required": true
+    },
+    {
+      "permission": "data:read",
+      "reason": "Read selected clipboard item text before converting it into a TODO.",
+      "required": true
+    },
+    {
+      "permission": "data:delete",
+      "reason": "Remove source clipboard items after they are moved into TODO.",
+      "required": true
     }
   ],
   "extensions": [
     {
       "point": "content-tab",
       "component": "TodoView",
+      "icon": "list-todo",
       "priority": 40
+    },
+    {
+      "point": "context-menu",
+      "component": "MoveToTodoAction",
+      "icon": "list-todo",
+      "condition": "item.type === \"text\"",
+      "priority": 80
     }
   ],
   "minAppVersion": "1.1.0",
