@@ -71,6 +71,10 @@ interface PluginContextMenuItem {
 
 interface CliporaxWindow extends Window {
   CliporaxPlugins?: Record<string, RuntimePlugin>;
+  CliporaxPluginStorage?: {
+    get<T>(key: string): Promise<T | null>;
+    set(key: string, value: unknown): Promise<void>;
+  };
 }
 
 const hostWindow = window as CliporaxWindow;
@@ -220,13 +224,25 @@ function loadState(): TodoState {
 }
 
 function saveState(state: TodoState): void {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      groups: sortGroups(state.groups),
-      items: sortItems(state.items),
-    }),
-  );
+  const stored = { groups: sortGroups(state.groups), items: sortItems(state.items) };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+  void hostWindow.CliporaxPluginStorage?.set(STORAGE_KEY, stored).catch(() => {
+    // Local storage remains an offline fallback; the next save retries sync.
+  });
+}
+
+async function hydrateSyncedState(): Promise<void> {
+  try {
+    const remote = await hostWindow.CliporaxPluginStorage?.get<TodoState>(STORAGE_KEY);
+    if (remote) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(remote));
+      window.dispatchEvent(new CustomEvent(`${PLUGIN_ID}:items-changed`));
+      return;
+    }
+    await hostWindow.CliporaxPluginStorage?.set(STORAGE_KEY, loadState());
+  } catch {
+    // Offline mode intentionally keeps the local copy usable.
+  }
 }
 
 function addTodoTexts(texts: string[], targetGroupId = DEFAULT_GROUP_ID): number {
@@ -382,6 +398,18 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       background: ${colors.raised};
       font-size: 12px;
     }
+    .todo-pro-inline-control {
+      height: 32px !important;
+      min-height: 32px !important;
+      padding: 5px 8px !important;
+      font-size: 12px !important;
+      line-height: 1.35 !important;
+    }
+    textarea.todo-pro-inline-control {
+      height: 40px !important;
+      min-height: 40px !important;
+      max-height: 96px;
+    }
     .todo-pro-combobox {
       position: relative;
       min-width: 0;
@@ -473,7 +501,9 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
     }
     .todo-pro-add-tile {
       width: 100%;
-      min-height: 30px;
+      height: 28px;
+      min-height: 28px;
+      flex: 0 0 28px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1120,17 +1150,12 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
   function renderAddGroupTile(): HTMLElement {
     if (creatingGroup) {
       const form = document.createElement("form");
-      form.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;";
+      form.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr);";
       const input = document.createElement("input");
       input.type = "text";
       input.placeholder = "New group";
       input.setAttribute("aria-label", "New TODO group");
-      input.className = "todo-pro-control";
-      const save = document.createElement("button");
-      save.type = "submit";
-      save.textContent = "Add";
-      save.setAttribute("aria-label", "Add group");
-      save.className = "todo-pro-icon-button";
+      input.className = "todo-pro-control todo-pro-inline-control";
       form.onsubmit = (event) => {
         event.preventDefault();
         addGroup(input.value);
@@ -1142,7 +1167,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
           renderControls();
         }
       };
-      form.append(input, save);
+      form.append(input);
       setTimeout(() => input.focus(), 0);
       return form;
     }
@@ -1385,7 +1410,9 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
     };
 
     const content = document.createElement("div");
-    content.style.cssText = "min-width:0;";
+    content.style.cssText = editingItemId === item.id
+      ? "grid-column: 2 / -1; min-width:0;"
+      : "min-width:0;";
 
     if (editingItemId === item.id) {
       const editor = document.createElement("textarea");
@@ -1395,7 +1422,9 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       editor.style.cssText = `
         box-sizing: border-box;
         width: 100%;
-        min-height: 56px;
+        height: clamp(88px, 24dvh, 180px);
+        min-height: 88px;
+        max-height: 34dvh;
         resize: vertical;
         border: 1px solid ${colors.primary};
         border-radius: 7px;
@@ -1406,7 +1435,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
         line-height: 1.5;
       `;
       editor.onkeydown = (event) => {
-        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
           updateItemText(item, editor.value);
         }
@@ -1417,33 +1446,6 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
         }
       };
       content.append(editor);
-      const editorActions = document.createElement("div");
-      editorActions.style.cssText = `
-        display: flex;
-        justify-content: flex-end;
-        gap: 6px;
-        margin-top: 6px;
-      `;
-      const cancelEdit = document.createElement("button");
-      cancelEdit.type = "button";
-      cancelEdit.textContent = "Cancel";
-      cancelEdit.setAttribute("aria-label", `Cancel editing TODO: ${item.text}`);
-      cancelEdit.className = "todo-pro-secondary";
-      cancelEdit.onclick = () => {
-        editingItemId = null;
-        renderList();
-      };
-      const saveEdit = document.createElement("button");
-      saveEdit.type = "button";
-      saveEdit.textContent = "Save";
-      saveEdit.setAttribute("aria-label", `Save TODO: ${item.text}`);
-      saveEdit.className = "todo-pro-primary";
-      saveEdit.style.minHeight = "32px";
-      saveEdit.onclick = () => {
-        updateItemText(item, editor.value);
-      };
-      editorActions.append(cancelEdit, saveEdit);
-      content.append(editorActions);
       setTimeout(() => {
         editor.focus();
         editor.setSelectionRange(editor.value.length, editor.value.length);
@@ -1477,20 +1479,23 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       content.append(text);
     }
 
-    const editButton = document.createElement("button");
-    editButton.type = "button";
-    editButton.textContent = "✏️";
-    editButton.setAttribute("aria-label", `Edit TODO: ${item.text}`);
-    editButton.className = "todo-pro-secondary";
-    editButton.style.cssText = "width:30px;min-width:30px;min-height:30px;padding:0;";
-    editButton.onclick = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      editingItemId = item.id;
-      renderList();
-    };
+    row.append(checkbox, content);
 
-    row.append(checkbox, content, editButton);
+    if (editingItemId !== item.id) {
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.textContent = "✏️";
+      editButton.setAttribute("aria-label", `Edit TODO: ${item.text}`);
+      editButton.className = "todo-pro-secondary";
+      editButton.style.cssText = "width:30px;min-width:30px;min-height:30px;padding:0;";
+      editButton.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        editingItemId = item.id;
+        renderList();
+      };
+      row.append(editButton);
+    }
     return row;
   }
 
@@ -1532,31 +1537,25 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       const form = document.createElement("form");
       form.style.cssText = `
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 7px;
+        grid-template-columns: minmax(0, 1fr);
         align-items: start;
-        padding: 8px;
+        padding: 6px;
         border: 1px solid ${colors.subtleBorder};
         border-radius: 8px;
         background: ${colors.raised};
       `;
       const input = document.createElement("textarea");
-      input.rows = 2;
+      input.rows = 1;
       input.placeholder = "Add TODO item";
       input.setAttribute("aria-label", "Add TODO item");
-      input.className = "todo-pro-control";
+      input.className = "todo-pro-control todo-pro-inline-control";
       input.style.resize = "vertical";
-      const save = document.createElement("button");
-      save.type = "submit";
-      save.textContent = "Add";
-      save.setAttribute("aria-label", "Save new TODO item");
-      save.className = "todo-pro-icon-button";
       form.onsubmit = (event) => {
         event.preventDefault();
         addItem(input.value);
       };
       input.onkeydown = (event) => {
-        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
           addItem(input.value);
         }
@@ -1566,7 +1565,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
           renderList();
         }
       };
-      form.append(input, save);
+      form.append(input);
       setTimeout(() => input.focus(), 0);
       return form;
     }
@@ -1676,7 +1675,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
 
 const plugin: RuntimePlugin = {
   meta: { id: PLUGIN_ID, name: "TODO", version: "0.1.0" },
-  onActivate() {},
+  onActivate() { void hydrateSyncedState(); },
   onDeactivate() {},
   acceptItems,
   extensions: {
