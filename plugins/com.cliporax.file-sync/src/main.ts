@@ -97,7 +97,31 @@ interface ExtensionProps {
   };
   context?: {
     theme?: "light" | "dark";
+    ui: PluginUi;
   };
+}
+
+interface PluginComboboxOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
+interface PluginComboboxInstance {
+  element: HTMLDivElement;
+  setValue(value: string | undefined): void;
+  setOptions(options: PluginComboboxOption[]): void;
+}
+
+interface PluginUi {
+  createCombobox(options: {
+    options: PluginComboboxOption[];
+    value?: string;
+    onChange(value: string): void;
+    placeholder?: string;
+    theme?: "light" | "dark";
+    ariaLabel?: string;
+  }): PluginComboboxInstance;
 }
 
 interface PluginTransferItem {
@@ -269,11 +293,28 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
   const toolbar = document.createElement("div");
   toolbar.style.cssText = "display:flex;align-items:center;gap:8px;min-width:0;";
   const selectedEntries = new Set<string>();
-  const profileSelect = createCombobox("", [], messages.chooseProfile);
-  profileSelect.style.flex = "1";
+  let profileValue = "";
+  const profileCombobox = props.context?.ui.createCombobox({
+    options: [],
+    value: profileValue,
+    placeholder: messages.chooseProfile,
+    theme: props.context?.theme ?? "dark",
+    ariaLabel: messages.chooseProfile,
+    onChange: (value) => {
+      profileValue = value;
+      void run(async () => {
+        if (profileValue) {
+          await invoke("file_sync_set_profile", { profileId: profileValue });
+        }
+      });
+    },
+  });
+  if (!profileCombobox) throw new Error(messages.hostUnavailable);
+  const profileSelect = profileCombobox;
+  profileSelect.element.style.flex = "1";
   const refreshButton = createButton(messages.refresh, async () => {
-    if (profileSelect.value) {
-      await invoke("file_sync_refresh", { profileId: profileSelect.value });
+    if (profileValue) {
+      await invoke("file_sync_refresh", { profileId: profileValue });
     }
     await loadEntries();
   });
@@ -286,7 +327,7 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
     copySelectedButton.disabled = true;
   });
   copySelectedButton.disabled = true;
-  toolbar.append(profileSelect, refreshButton, copySelectedButton);
+  toolbar.append(profileSelect.element, refreshButton, copySelectedButton);
 
   const message = document.createElement("div");
   message.style.cssText = `min-height:16px;font-size:11px;color:${colors.muted};`;
@@ -349,136 +390,24 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
       invoke<ProfileOption[]>("file_sync_profile_options"),
       invoke<FileSyncConfig>("file_sync_get_config"),
     ]);
-    renderComboboxOptions(
-      profileSelect,
-      config.default_profile_id ?? "",
-      profiles.map((profile) => [
-        profile.id,
-        `${profile.name} · ${profile.provider}${profile.encryption_enabled ? ` · ${messages.encrypted}` : ""}`,
-      ]),
-      profiles.length ? messages.chooseProfile : messages.noProfile,
-    );
-    profileSelect.onchange = () =>
-      run(async () => {
-        if (profileSelect.value) {
-          await invoke("file_sync_set_profile", { profileId: profileSelect.value });
-        }
-      });
-  }
-
-  type DomCombobox = HTMLDivElement & {
-    value: string;
-    trigger: HTMLButtonElement;
-    menu: HTMLDivElement;
-  };
-
-  function createCombobox(
-    value: string,
-    options: Array<[string, string]>,
-    placeholder: string,
-  ): DomCombobox {
-    const root = document.createElement("div") as DomCombobox;
-    root.value = value;
-    root.style.cssText = "position:relative;min-width:0;";
-    root.trigger = document.createElement("button");
-    root.trigger.type = "button";
-    root.trigger.setAttribute("aria-label", messages.chooseProfile);
-    root.trigger.setAttribute("aria-haspopup", "listbox");
-    root.trigger.setAttribute("aria-expanded", "false");
-    root.trigger.style.cssText = `
-      width: 100%;
-      min-height: 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      border: 1px solid ${colors.border};
-      border-radius: 7px;
-      padding: 6px 8px;
-      color: ${colors.text};
-      background: ${colors.panel};
-      font-size: 12px;
-      text-align: left;
-      cursor: pointer;
-    `;
-    root.menu = document.createElement("div");
-    root.menu.setAttribute("role", "listbox");
-    root.menu.hidden = true;
-    root.menu.style.cssText = `
-      position: absolute;
-      z-index: 50;
-      left: 0;
-      right: 0;
-      top: calc(100% + 4px);
-      max-height: 220px;
-      overflow: auto;
-      border: 1px solid ${colors.border};
-      border-radius: 7px;
-      padding: 4px;
-      background: ${colors.panel};
-      box-shadow: 0 14px 34px rgba(15,23,42,.24);
-    `;
-    root.trigger.onclick = () => {
-      root.menu.hidden = !root.menu.hidden;
-      root.trigger.setAttribute("aria-expanded", String(!root.menu.hidden));
-    };
-    root.addEventListener("focusout", (event) => {
-      if (event.relatedTarget instanceof Node && root.contains(event.relatedTarget)) {
-        return;
-      }
-      root.menu.hidden = true;
-      root.trigger.setAttribute("aria-expanded", "false");
-    });
-    root.append(root.trigger, root.menu);
-    renderComboboxOptions(root, value, options, placeholder);
-    return root;
-  }
-
-  function renderComboboxOptions(
-    root: DomCombobox,
-    value: string,
-    options: Array<[string, string]>,
-    placeholder: string,
-  ): void {
-    root.value = value;
-    const selectedLabel = options.find(([id]) => id === value)?.[1] ?? placeholder;
-    root.trigger.replaceChildren(
-      document.createTextNode(selectedLabel),
-      document.createTextNode(" v"),
-    );
-    root.menu.replaceChildren();
-    for (const [optionValue, optionLabel] of [["", placeholder], ...options]) {
-      const option = document.createElement("button");
-      option.type = "button";
-      option.textContent = optionLabel;
-      option.setAttribute("role", "option");
-      option.setAttribute("aria-selected", optionValue === value ? "true" : "false");
-      option.style.cssText = `
-        width: 100%;
-        min-height: 30px;
-        border: 0;
-        border-radius: 6px;
-        padding: 6px 8px;
-        color: ${colors.text};
-        background: ${optionValue === value ? colors.background : "transparent"};
-        text-align: left;
-        cursor: pointer;
-        font-size: 12px;
-      `;
-      option.onclick = () => {
-        root.value = optionValue;
-        root.menu.hidden = true;
-        root.trigger.setAttribute("aria-expanded", "false");
-        renderComboboxOptions(root, optionValue, options, placeholder);
-        root.dispatchEvent(new Event("change"));
-      };
-      root.menu.append(option);
-    }
+    profileValue = config.default_profile_id ?? "";
+    profileSelect.setOptions([
+      {
+        value: "",
+        label: profiles.length ? messages.chooseProfile : messages.noProfile,
+        disabled: profiles.length === 0,
+      },
+      ...profiles.map((profile) => ({
+        value: profile.id,
+        label: `${profile.name} · ${profile.provider}${profile.encryption_enabled ? ` · ${messages.encrypted}` : ""}`,
+      })),
+    ]);
+    profileSelect.setValue(profileValue || undefined);
   }
 
   async function loadEntries(): Promise<void> {
     const entries = await invoke<FileSyncEntry[]>("file_sync_list", {
-      profileId: profileSelect.value || null,
+      profileId: profileValue || null,
     });
     const copyableIds = new Set(
       entries

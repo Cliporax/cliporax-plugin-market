@@ -31,8 +31,31 @@ interface ExtensionProps {
   data?: unknown;
   context?: {
     theme?: "light" | "dark";
+    ui: PluginUi;
   };
   config?: Record<string, unknown>;
+}
+
+interface PluginComboboxOption {
+  value: string;
+  label: string;
+}
+
+interface PluginComboboxInstance {
+  element: HTMLDivElement;
+  setValue(value: string | undefined): void;
+  setOptions(options: PluginComboboxOption[]): void;
+}
+
+interface PluginUi {
+  createCombobox(options: {
+    options: PluginComboboxOption[];
+    value?: string;
+    onChange(value: string): void;
+    placeholder?: string;
+    theme?: "light" | "dark";
+    ariaLabel?: string;
+  }): PluginComboboxInstance;
 }
 
 interface RuntimePlugin {
@@ -410,56 +433,6 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       min-height: 40px !important;
       max-height: 96px;
     }
-    .todo-pro-combobox {
-      position: relative;
-      min-width: 0;
-    }
-    .todo-pro-combobox-trigger {
-      width: 100%;
-      min-height: 36px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      border: 1px solid ${colors.subtleBorder};
-      border-radius: 7px;
-      padding: 7px 9px;
-      cursor: pointer;
-      color: ${colors.text};
-      background: ${colors.raised};
-      font-size: 12px;
-      text-align: left;
-    }
-    .todo-pro-combobox-menu {
-      position: absolute;
-      z-index: 70;
-      left: 0;
-      right: 0;
-      top: calc(100% + 4px);
-      max-height: 220px;
-      overflow: auto;
-      border: 1px solid ${colors.subtleBorder};
-      border-radius: 7px;
-      padding: 4px;
-      background: ${colors.surface};
-      box-shadow: 0 14px 34px rgba(15,23,42,.24);
-    }
-    .todo-pro-combobox-option {
-      width: 100%;
-      min-height: 30px;
-      border: 0;
-      border-radius: 6px;
-      padding: 6px 8px;
-      cursor: pointer;
-      color: ${colors.text};
-      background: transparent;
-      text-align: left;
-      font-size: 12px;
-    }
-    .todo-pro-combobox-option:hover,
-    .todo-pro-combobox-option[aria-selected="true"] {
-      background: ${colors.primarySoft};
-    }
     .todo-pro-primary {
       min-height: 36px;
       border: 0;
@@ -595,19 +568,22 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
   inputLabel.textContent = "Task";
   inputLabel.append(input);
 
-  const groupSelect = renderCombobox(
-    addGroupValue,
-    state.groups.map((group) => [group.id, group.name]),
-    "TODO group",
-    (value) => {
+  const groupCombobox = props.context?.ui.createCombobox({
+    options: state.groups.map((group) => ({ value: group.id, label: group.name })),
+    value: addGroupValue,
+    theme: props.context?.theme ?? "dark",
+    ariaLabel: "TODO group",
+    onChange: (value) => {
       addGroupValue = value;
     },
-  );
+  });
+  if (!groupCombobox) throw new Error("Cliporax host UI is unavailable.");
+  const groupSelect = groupCombobox;
 
   const selectLabel = document.createElement("label");
   selectLabel.className = "todo-pro-label";
   selectLabel.textContent = "Group";
-  selectLabel.append(groupSelect);
+  selectLabel.append(groupSelect.element);
 
   const addButton = document.createElement("button");
   addButton.type = "submit";
@@ -899,14 +875,8 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
     if (!state.groups.some((group) => group.id === addGroupValue)) {
       addGroupValue = DEFAULT_GROUP_ID;
     }
-    renderComboboxOptions(
-      groupSelect,
-      addGroupValue,
-      state.groups.map((group) => [group.id, group.name]),
-      (value) => {
-        addGroupValue = value;
-      },
-    );
+    groupSelect.setOptions(state.groups.map((group) => ({ value: group.id, label: group.name })));
+    groupSelect.setValue(addGroupValue);
 
     groupRail.replaceChildren();
     const allButton = renderGroupRailButton(
@@ -1184,79 +1154,6 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       renderControls();
     };
     return add;
-  }
-
-  type TodoCombobox = HTMLDivElement & {
-    value: string;
-    trigger: HTMLButtonElement;
-    menu: HTMLDivElement;
-  };
-
-  function renderCombobox(
-    value: string,
-    options: Array<[string, string]>,
-    ariaLabel: string,
-    onChange: (value: string) => void,
-  ): TodoCombobox {
-    const root = document.createElement("div") as TodoCombobox;
-    root.className = "todo-pro-combobox";
-    root.value = value;
-    root.trigger = document.createElement("button");
-    root.trigger.type = "button";
-    root.trigger.className = "todo-pro-combobox-trigger";
-    root.trigger.setAttribute("aria-label", ariaLabel);
-    root.trigger.setAttribute("aria-haspopup", "listbox");
-    root.trigger.setAttribute("aria-expanded", "false");
-    root.menu = document.createElement("div");
-    root.menu.className = "todo-pro-combobox-menu";
-    root.menu.setAttribute("role", "listbox");
-    root.menu.hidden = true;
-    root.trigger.onclick = () => {
-      root.menu.hidden = !root.menu.hidden;
-      root.trigger.setAttribute("aria-expanded", String(!root.menu.hidden));
-    };
-    root.addEventListener("focusout", (event) => {
-      if (event.relatedTarget instanceof Node && root.contains(event.relatedTarget)) {
-        return;
-      }
-      root.menu.hidden = true;
-      root.trigger.setAttribute("aria-expanded", "false");
-    });
-    root.append(root.trigger, root.menu);
-    renderComboboxOptions(root, value, options, onChange);
-    return root;
-  }
-
-  function renderComboboxOptions(
-    root: TodoCombobox,
-    value: string,
-    options: Array<[string, string]>,
-    onChange: (value: string) => void,
-  ): void {
-    root.value = value;
-    const selectedLabel = options.find(([optionValue]) => optionValue === value)?.[1] ?? "";
-    root.trigger.replaceChildren(
-      document.createTextNode(selectedLabel),
-      document.createTextNode(" v"),
-    );
-    root.menu.replaceChildren();
-    for (const [optionValue, optionLabel] of options) {
-      const option = document.createElement("button");
-      option.type = "button";
-      option.className = "todo-pro-combobox-option";
-      option.textContent = optionLabel;
-      option.setAttribute("role", "option");
-      option.setAttribute("aria-selected", optionValue === value ? "true" : "false");
-      option.onclick = () => {
-        root.value = optionValue;
-        root.menu.hidden = true;
-        root.trigger.setAttribute("aria-expanded", "false");
-        onChange(optionValue);
-        root.dispatchEvent(new Event("change"));
-        renderComboboxOptions(root, optionValue, options, onChange);
-      };
-      root.menu.append(option);
-    }
   }
 
   function updateItemText(item: TodoItem, nextText: string): boolean {
