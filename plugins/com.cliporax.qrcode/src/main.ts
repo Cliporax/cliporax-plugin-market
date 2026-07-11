@@ -21,6 +21,19 @@ interface ExtensionProps {
   context?: PluginContext;
 }
 
+interface PluginTransferItem {
+  id?: number | null;
+  type?: string;
+  content?: string;
+}
+
+interface PluginContextMenuItem {
+  id: string;
+  label: string;
+  icon?: string;
+  action(api: { getItems(): PluginTransferItem[] }): void | Promise<void>;
+}
+
 interface RuntimePlugin {
   onActivate?: (context: PluginContext) => void;
   onDeactivate?: () => void;
@@ -29,6 +42,7 @@ interface RuntimePlugin {
     {
       render: (props: ExtensionProps) => HTMLElement | null;
       shouldShow?: (props: ExtensionProps) => boolean;
+      getMenuItems?: (props: ExtensionProps) => PluginContextMenuItem[];
     }
   >;
 }
@@ -221,10 +235,20 @@ hostWindow.CliporaxPlugins[PLUGIN_ID] = {
         return Boolean(
           item &&
             (item.type === "text" || item.type === "file") &&
-            item.content &&
-            props.data?.position === "action",
+            (props.data?.position !== "action" || item.content),
         );
       },
+      getMenuItems: (props: ExtensionProps) => [
+        {
+          id: "generate-qr-code",
+          label: "Generate QR Code",
+          icon: "qr-code",
+          action: (api) => {
+            const content = api.getItems()[0]?.content?.trim();
+            if (content) showQRCodeModal(content, props.context?.theme || "dark");
+          },
+        },
+      ],
     },
   },
 };

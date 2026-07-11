@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Use Cliporax's permission-aware network API for every translation provider.
+- Require Cliporax 1.2.2 or later.
+
 ## 0.1.1
 
 - Change the default provider to the MyMemory public API so translation works without running a local service.

@@ -19,6 +19,11 @@
       "required": true
     },
     {
+      "permission": "data:read",
+      "reason": "Read the selected file clipboard item for the context-menu action.",
+      "required": true
+    },
+    {
       "permission": "network:sync",
       "reason": "Use an existing Cliporax sync profile through controlled backend commands.",
       "required": true

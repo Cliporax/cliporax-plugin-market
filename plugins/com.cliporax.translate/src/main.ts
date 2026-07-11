@@ -21,6 +21,7 @@ interface ExtensionProps {
   };
   context: {
     theme: Theme;
+    network: PluginNetworkApi;
     plugin: {
       id: string;
       name: string;
@@ -28,6 +29,23 @@ interface ExtensionProps {
     };
   };
   config: Record<string, unknown>;
+}
+
+interface PluginTransferItem {
+  id?: number | null;
+  type?: string;
+  content?: string;
+}
+
+interface PluginContextMenuItem {
+  id: string;
+  label: string;
+  icon?: string;
+  action(api: { getItems(): PluginTransferItem[] }): void | Promise<void>;
+}
+
+interface PluginNetworkApi {
+  fetch(input: RequestInfo | URL, options?: RequestInit & { timeout?: number }): Promise<Response>;
 }
 
 interface TranslateSettings {
@@ -47,6 +65,7 @@ interface TranslateInput {
   apiKey?: string;
   endpoint?: string;
   preserveFormatting: boolean;
+  network: PluginNetworkApi;
 }
 
 interface TranslateResult {
@@ -77,6 +96,7 @@ interface RuntimePlugin {
     {
       render: (props: ExtensionProps) => HTMLElement | null;
       shouldShow?: (props: ExtensionProps) => boolean;
+      getMenuItems?: (props: ExtensionProps) => PluginContextMenuItem[];
     }
   >;
 }
@@ -400,7 +420,7 @@ async function translateWithMyMemory(input: TranslateInput): Promise<TranslateRe
 
   let response: Response;
   try {
-    response = await fetch(url.toString(), {
+    response = await input.network.fetch(url.toString(), {
       method: "GET",
       headers: { Accept: "application/json" },
     });
@@ -460,7 +480,7 @@ async function translateWithLibreTranslate(input: TranslateInput): Promise<Trans
 
   let response: Response;
   try {
-    response = await fetch(libreEndpoint(endpoint), {
+    response = await input.network.fetch(libreEndpoint(endpoint), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -511,7 +531,7 @@ async function translateWithYoudaoPublic(input: TranslateInput): Promise<Transla
 
   let response: Response;
   try {
-    response = await fetch(endpoint, {
+    response = await input.network.fetch(endpoint, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -565,7 +585,7 @@ async function translateWithMicrosoftEdge(input: TranslateInput): Promise<Transl
 
   let response: Response;
   try {
-    response = await fetch(url.toString(), {
+    response = await input.network.fetch(url.toString(), {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -625,7 +645,7 @@ async function translateWithGooglePublic(input: TranslateInput): Promise<Transla
 
   let response: Response;
   try {
-    response = await fetch(url.toString(), {
+    response = await input.network.fetch(url.toString(), {
       method: "GET",
       headers: { Accept: "application/json" },
     });
@@ -686,7 +706,7 @@ async function translateWithDeepL(input: TranslateInput): Promise<TranslateResul
 
   let response: Response;
   try {
-    response = await fetch(endpoint, {
+    response = await input.network.fetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: `DeepL-Auth-Key ${input.apiKey}`,
@@ -726,6 +746,7 @@ async function translateWithDeepL(input: TranslateInput): Promise<TranslateResul
 async function translateText(
   settings: TranslateSettings,
   text: string,
+  network: PluginNetworkApi,
 ): Promise<TranslateResult> {
   if (text.length > settings.maxCharsPerRequest) {
     throw makeProviderError(
@@ -743,6 +764,7 @@ async function translateText(
     apiKey: settings.apiKey,
     endpoint: settings.endpoint,
     preserveFormatting: settings.preserveFormatting,
+    network,
   };
 
   if (settings.provider === "google_public") return translateWithGooglePublic(input);
@@ -966,7 +988,7 @@ function createPopover(anchor: HTMLElement, props: ExtensionProps): HTMLElement 
     currentError = null;
     render();
     try {
-      currentResult = await translateText(settings, text);
+      currentResult = await translateText(settings, text, props.context.network);
       status = "success";
     } catch (error) {
       currentResult = null;
@@ -1133,6 +1155,20 @@ function renderTranslateButton(props: ExtensionProps): HTMLElement | null {
   return button;
 }
 
+function openTranslateFromMenu(props: ExtensionProps, content: string): void {
+  const anchor = document.createElement("span");
+  anchor.style.cssText = "position: fixed; left: 50vw; top: 50vh; width: 1px; height: 1px; pointer-events: none;";
+  document.body.appendChild(anchor);
+  createPopover(anchor, {
+    ...props,
+    data: {
+      ...props.data,
+      item: { id: props.data.item?.id ?? 0, type: "text", content },
+    },
+  });
+  requestAnimationFrame(() => anchor.remove());
+}
+
 function renderSettings(props: ExtensionProps): HTMLElement {
   ensureStyles();
   const wrapper = el("div", "cliporax-translate-popover");
@@ -1173,6 +1209,17 @@ window.CliporaxPlugins[PLUGIN_ID] = {
     TranslateButton: {
       shouldShow: (props) => props.data.item?.type === "text",
       render: renderTranslateButton,
+      getMenuItems: (props) => [
+        {
+          id: "translate",
+          label: "Translate",
+          icon: "languages",
+          action: (api) => {
+            const content = api.getItems()[0]?.content?.trim();
+            if (content) openTranslateFromMenu(props, content);
+          },
+        },
+      ],
     },
     TranslateSettings: {
       render: renderSettings,

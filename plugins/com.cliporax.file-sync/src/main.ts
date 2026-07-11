@@ -100,6 +100,17 @@ interface ExtensionProps {
   };
 }
 
+interface PluginTransferItem {
+  id?: number | null;
+}
+
+interface PluginContextMenuItem {
+  id: string;
+  label: string;
+  icon?: string;
+  action(api: { getItems(): PluginTransferItem[] }): void | Promise<void>;
+}
+
 interface TauriInternals {
   invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
 }
@@ -113,6 +124,7 @@ interface RuntimePlugin {
     {
       render(props: ExtensionProps): HTMLElement | null;
       shouldShow?(props: ExtensionProps): boolean;
+      getMenuItems?(props: ExtensionProps): PluginContextMenuItem[];
     }
   >;
 }
@@ -614,6 +626,18 @@ const plugin: RuntimePlugin = {
     FileSyncButton: {
       shouldShow: (props) => props.data?.item?.type === "file",
       render: renderFileSyncButton,
+      getMenuItems: () => [
+        {
+          id: "add-to-file-sync",
+          label: messages.addToSync,
+          icon: "upload",
+          action: async (api) => {
+            const itemId = api.getItems()[0]?.id;
+            if (typeof itemId !== "number") return;
+            await invoke("file_sync_enqueue_clipboard_item", { itemId });
+          },
+        },
+      ],
     },
     FileSyncView: {
       render: renderFileSyncView,

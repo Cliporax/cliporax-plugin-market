@@ -8,6 +8,7 @@ interface TodoGroup {
   name: string;
   collapsed: boolean;
   createdAt: string;
+  order: number;
 }
 
 interface TodoItem {
@@ -18,6 +19,7 @@ interface TodoItem {
   createdAt: string;
   completedAt: string | null;
   updatedAt: string | null;
+  order: number;
 }
 
 interface TodoState {
@@ -94,20 +96,21 @@ function defaultGroup(): TodoGroup {
     name: "Inbox",
     collapsed: false,
     createdAt: new Date().toISOString(),
+    order: 0,
   };
 }
 
 function sortGroups(groups: TodoGroup[]): TodoGroup[] {
   return [...groups].sort((a, b) => {
-    if (a.id === DEFAULT_GROUP_ID) return -1;
-    if (b.id === DEFAULT_GROUP_ID) return 1;
+    if (a.order !== b.order) return a.order - b.order;
     return a.createdAt.localeCompare(b.createdAt);
   });
 }
 
 function sortItems(items: TodoItem[]): TodoItem[] {
   return [...items].sort((a, b) => {
-    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    if (a.groupId !== b.groupId) return a.groupId.localeCompare(b.groupId);
+    if (a.order !== b.order) return a.order - b.order;
     return a.createdAt.localeCompare(b.createdAt);
   });
 }
@@ -125,6 +128,7 @@ function sanitizeGroup(value: unknown): TodoGroup | null {
       typeof record.createdAt === "string" && record.createdAt
         ? record.createdAt
         : new Date().toISOString(),
+    order: typeof record.order === "number" ? record.order : Number.MAX_SAFE_INTEGER,
   };
 }
 
@@ -178,12 +182,31 @@ function sanitizeState(value: unknown): TodoState {
         typeof record.updatedAt === "string" && record.updatedAt
           ? record.updatedAt
           : null,
+      order: typeof record.order === "number" ? record.order : Number.MAX_SAFE_INTEGER,
     });
   }
 
+  const groups = sortGroups([...groupMap.values()]).map((group, index) => ({
+    ...group,
+    order: Number.isFinite(group.order) ? group.order : index,
+  }));
+  const groupIndexById = new Map(groups.map((group, index) => [group.id, index]));
+  const normalizedItems = items
+    .sort((a, b) => {
+      const groupA = groupIndexById.get(a.groupId) ?? 0;
+      const groupB = groupIndexById.get(b.groupId) ?? 0;
+      if (groupA !== groupB) return groupA - groupB;
+      if (a.order !== b.order) return a.order - b.order;
+      return a.createdAt.localeCompare(b.createdAt);
+    })
+    .map((item, index) => ({
+      ...item,
+      order: Number.isFinite(item.order) ? item.order : index,
+    }));
+
   return {
-    groups: sortGroups([...groupMap.values()]),
-    items: sortItems(items),
+    groups: groups.map((group, index) => ({ ...group, order: index })),
+    items: normalizedItems,
   };
 }
 
@@ -230,6 +253,7 @@ function addTodoTexts(texts: string[], targetGroupId = DEFAULT_GROUP_ID): number
       createdAt: now,
       completedAt: null,
       updatedAt: null,
+      order: state.items.length + additions.length,
     });
   }
 
@@ -294,13 +318,11 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
   let editingItemId: string | null = null;
   let activeGroupId: string | "all" = "all";
   let addGroupValue = DEFAULT_GROUP_ID;
-  let itemMenu:
-    | {
-        itemId: string;
-        x: number;
-        y: number;
-      }
-    | null = null;
+  let creatingItem = false;
+  let creatingGroup = false;
+  let editingGroupId: string | null = null;
+  let draggedItemId: string | null = null;
+  let draggedGroupId: string | null = null;
 
   const root = document.createElement("section");
   root.className = "todo-pro";
@@ -341,12 +363,6 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       display: grid;
       grid-template-columns: minmax(168px, 220px) minmax(0, 1fr);
       gap: 10px;
-    }
-    .todo-pro-input-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(128px, 180px) auto;
-      align-items: end;
-      gap: 8px;
     }
     .todo-pro-label {
       display: grid;
@@ -438,6 +454,49 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       font-size: 11px;
       font-weight: 650;
     }
+    .todo-pro-icon-button {
+      min-width: 30px;
+      min-height: 30px;
+      border: 1px solid ${colors.subtleBorder};
+      border-radius: 7px;
+      padding: 0;
+      cursor: pointer;
+      color: ${colors.muted};
+      background: transparent;
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .todo-pro-icon-button:hover {
+      color: ${colors.text};
+      background: ${colors.primarySoft};
+    }
+    .todo-pro-add-tile {
+      width: 100%;
+      min-height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px dashed ${colors.primary};
+      border-radius: 8px;
+      cursor: pointer;
+      color: ${colors.primary};
+      background: ${colors.primarySoft};
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1;
+    }
+    .todo-pro-add-tile:hover { background: ${dark ? "rgba(20, 184, 166, 0.24)" : "#bff5ee"}; }
+    .todo-pro-add-mark { font-size: 16px; font-weight: 800; }
+    .todo-pro-item:focus,
+    .todo-pro-item:focus-within {
+      border-color: ${colors.primary} !important;
+      background: ${colors.primarySoft} !important;
+    }
+    .todo-pro-drag-over {
+      border-color: ${colors.primary} !important;
+      background: ${colors.primarySoft} !important;
+    }
     .todo-pro-danger {
       color: ${colors.error};
     }
@@ -446,9 +505,6 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
     }
     @media (max-width: 720px) {
       .todo-pro-shell {
-        grid-template-columns: 1fr;
-      }
-      .todo-pro-input-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -491,7 +547,6 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
   header.append(heading, summary);
 
   const form = document.createElement("form");
-  form.className = "todo-pro-input-grid";
   form.style.cssText = `
     padding: 10px;
     border: 1px solid ${colors.subtleBorder};
@@ -607,15 +662,10 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
 
   form.append(inputLabel, selectLabel, addButton);
   groupForm.append(groupInputLabel, addGroupButton);
-  sidebar.append(groupRailTitle, groupRail, groupForm);
+  sidebar.append(groupRailTitle, groupRail);
   contentPanel.append(message, list);
   shell.append(sidebar, contentPanel);
-  root.append(style, header, form, shell);
-
-  function closeItemMenu(): void {
-    itemMenu = null;
-    renderList();
-  }
+  root.append(style, header, shell);
 
   function persistAndRender(nextState: TodoState): void {
     state = sanitizeState(nextState);
@@ -629,6 +679,190 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
   function setMessage(text: string, error = false): void {
     message.textContent = text;
     message.style.color = error ? colors.error : colors.muted;
+  }
+
+  function nextOrder(items: Array<{ order: number }>): number {
+    return items.reduce((max, item) => Math.max(max, item.order), -1) + 1;
+  }
+
+  function activeTargetGroupId(): string {
+    return activeGroupId === "all" ? DEFAULT_GROUP_ID : activeGroupId;
+  }
+
+  function addItem(textValue: string, groupId = activeTargetGroupId()): boolean {
+    const text = normalizeText(textValue);
+    const targetGroupId = state.groups.some((group) => group.id === groupId)
+      ? groupId
+      : DEFAULT_GROUP_ID;
+    if (!text) {
+      setMessage("Enter a non-empty TODO item.", true);
+      return false;
+    }
+    if (
+      state.items.some(
+        (item) =>
+          duplicateKey(item.text, item.groupId) === duplicateKey(text, targetGroupId),
+      )
+    ) {
+      setMessage("That TODO item already exists in this group.", true);
+      return false;
+    }
+    persistAndRender({
+      ...state,
+      items: [
+        ...state.items,
+        {
+          id: createId(),
+          text,
+          groupId: targetGroupId,
+          completed: false,
+          createdAt: new Date().toISOString(),
+          completedAt: null,
+          updatedAt: null,
+          order: nextOrder(state.items.filter((item) => item.groupId === targetGroupId)),
+        },
+      ],
+    });
+    creatingItem = false;
+    setMessage("");
+    return true;
+  }
+
+  function deleteItem(item: TodoItem): void {
+    editingItemId = null;
+    persistAndRender({
+      ...state,
+      items: state.items.filter((existing) => existing.id !== item.id),
+    });
+    setMessage("");
+  }
+
+  function addGroup(nameValue: string): boolean {
+    const name = normalizeText(nameValue);
+    if (!name) {
+      setMessage("Enter a non-empty group name.", true);
+      return false;
+    }
+    if (state.groups.some((group) => group.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setMessage("That group already exists.", true);
+      return false;
+    }
+    const group: TodoGroup = {
+      id: createId(),
+      name,
+      collapsed: false,
+      createdAt: new Date().toISOString(),
+      order: nextOrder(state.groups),
+    };
+    activeGroupId = group.id;
+    addGroupValue = group.id;
+    creatingGroup = false;
+    persistAndRender({ ...state, groups: [...state.groups, group] });
+    setMessage("");
+    return true;
+  }
+
+  function renameGroup(group: TodoGroup, nameValue: string): boolean {
+    const name = normalizeText(nameValue);
+    if (!name) {
+      setMessage("Enter a non-empty group name.", true);
+      return false;
+    }
+    if (
+      state.groups.some(
+        (candidate) =>
+          candidate.id !== group.id &&
+          candidate.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+      )
+    ) {
+      setMessage("That group already exists.", true);
+      return false;
+    }
+    editingGroupId = null;
+    persistAndRender({
+      ...state,
+      groups: state.groups.map((candidate) =>
+        candidate.id === group.id ? { ...candidate, name } : candidate,
+      ),
+    });
+    setMessage("");
+    return true;
+  }
+
+  function deleteGroup(group: TodoGroup): void {
+    if (group.id === DEFAULT_GROUP_ID) {
+      setMessage("Inbox cannot be deleted.", true);
+      return;
+    }
+    const fallbackGroupId = DEFAULT_GROUP_ID;
+    let fallbackOrder = nextOrder(state.items.filter((candidate) => candidate.groupId === fallbackGroupId));
+    activeGroupId = fallbackGroupId;
+    addGroupValue = fallbackGroupId;
+    persistAndRender({
+      groups: state.groups.filter((existing) => existing.id !== group.id),
+      items: state.items.map((item) =>
+        item.groupId === group.id
+          ? {
+              ...item,
+              groupId: fallbackGroupId,
+              order: fallbackOrder++,
+              updatedAt: new Date().toISOString(),
+            }
+          : item,
+      ),
+    });
+    setMessage("");
+  }
+
+  function reorderGroups(sourceId: string, targetId: string): void {
+    if (sourceId === targetId) return;
+    const groups = sortGroups(state.groups);
+    const sourceIndex = groups.findIndex((group) => group.id === sourceId);
+    const targetIndex = groups.findIndex((group) => group.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const [moved] = groups.splice(sourceIndex, 1);
+    groups.splice(targetIndex, 0, moved);
+    persistAndRender({
+      ...state,
+      groups: groups.map((group, index) => ({ ...group, order: index })),
+    });
+  }
+
+  function reorderItems(sourceId: string, targetId: string): void {
+    if (sourceId === targetId) return;
+    const source = state.items.find((item) => item.id === sourceId);
+    const target = state.items.find((item) => item.id === targetId);
+    if (!source || !target) return;
+    if (!moveItemToGroup(source, target.groupId, false)) return;
+    const groupItems = sortItems(
+      state.items.map((item) =>
+        item.id === source.id
+          ? { ...item, groupId: target.groupId, updatedAt: new Date().toISOString() }
+          : item,
+      ).filter((item) => item.groupId === target.groupId),
+    );
+    const currentIndex = groupItems.findIndex((item) => item.id === source.id);
+    const targetIndex = groupItems.findIndex((item) => item.id === target.id);
+    if (currentIndex < 0 || targetIndex < 0) return;
+    const [moved] = groupItems.splice(currentIndex, 1);
+    groupItems.splice(targetIndex, 0, moved);
+    const orderById = new Map(groupItems.map((item, index) => [item.id, index]));
+    persistAndRender({
+      ...state,
+      items: state.items.map((item) => {
+        const order = orderById.get(item.id);
+        if (item.id === source.id) {
+          return {
+            ...item,
+            groupId: target.groupId,
+            order: order ?? item.order,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return order === undefined ? item : { ...item, order };
+      }),
+    });
+    setMessage("");
   }
 
   function renderControls(): void {
@@ -663,6 +897,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
         ),
       );
     }
+    groupRail.append(renderAddGroupTile());
   }
 
   function renderSummary(): void {
@@ -711,9 +946,68 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
     total: number,
     open: number,
   ): HTMLElement {
+    const group = groupId === "all" ? null : state.groups.find((candidate) => candidate.id === groupId) ?? null;
+    if (group && editingGroupId === group.id) {
+      const form = document.createElement("form");
+      form.style.cssText = `
+        display:grid;
+        grid-template-columns:minmax(0, 1fr) auto auto;
+        gap:5px;
+        align-items:center;
+        padding:5px;
+        border:2px solid ${colors.primary};
+        border-radius:8px;
+        background:${colors.primarySoft};
+      `;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = group.name;
+      input.setAttribute("aria-label", `Rename TODO group ${group.name}`);
+      input.className = "todo-pro-control";
+      input.style.minHeight = "32px";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.textContent = "Cancel";
+      cancel.className = "todo-pro-secondary";
+      cancel.onclick = () => {
+        editingGroupId = null;
+        renderControls();
+      };
+      const save = document.createElement("button");
+      save.type = "submit";
+      save.textContent = "Save";
+      save.className = "todo-pro-primary";
+      save.style.minHeight = "32px";
+      form.onsubmit = (event) => {
+        event.preventDefault();
+        renameGroup(group, input.value);
+      };
+      input.onkeydown = (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          editingGroupId = null;
+          renderControls();
+        }
+      };
+      form.append(input, cancel, save);
+      setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 0);
+      return form;
+    }
+
+    const row = document.createElement("div");
+    row.style.cssText = `
+      display:grid;
+      grid-template-columns:minmax(0, 1fr) ${group ? "auto" : ""};
+      gap:5px;
+      align-items:stretch;
+    `;
     const button = document.createElement("button");
     button.type = "button";
     button.setAttribute("aria-label", `Show TODO group ${name}`);
+    if (group) button.draggable = true;
     const active = activeGroupId === groupId;
     button.style.cssText = `
       width: 100%;
@@ -728,6 +1022,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       cursor: pointer;
       color: ${active ? colors.text : colors.muted};
       background: ${active ? colors.primarySoft : "transparent"};
+      font-weight: ${active ? "800" : "inherit"};
       text-align: left;
     `;
     const label = document.createElement("span");
@@ -743,12 +1038,127 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       font-variant-numeric: tabular-nums;
     `;
     button.append(label, count);
+    row.append(button);
+    if (group) {
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:flex;gap:4px;align-items:center;";
+      const renameButton = document.createElement("button");
+      renameButton.type = "button";
+      renameButton.textContent = "✏️";
+      renameButton.setAttribute("aria-label", `Rename TODO group ${name}`);
+      renameButton.className = "todo-pro-secondary";
+      renameButton.style.cssText = "width:30px;min-width:30px;min-height:30px;padding:0;";
+      renameButton.onclick = () => {
+        editingGroupId = group.id;
+        creatingGroup = false;
+        renderControls();
+      };
+      actions.append(renameButton);
+      if (group.id !== DEFAULT_GROUP_ID) {
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.setAttribute("aria-label", `Delete TODO group ${name}`);
+        deleteButton.textContent = "×";
+        deleteButton.className = "todo-pro-secondary todo-pro-danger";
+        deleteButton.style.cssText = `
+          min-width:32px;
+          min-height:38px;
+          padding:0;
+          font-size:16px;
+        `;
+        deleteButton.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          deleteGroup(group);
+        };
+        actions.append(deleteButton);
+      }
+      row.append(actions);
+    }
     button.onclick = () => {
       activeGroupId = groupId;
       renderControls();
       renderList();
     };
-    return button;
+    button.ondragstart = (event) => {
+      if (!group) return;
+      draggedGroupId = group.id;
+      event.dataTransfer?.setData("text/plain", group.id);
+      event.dataTransfer?.setData("application/x-cliporax-todo-group", group.id);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+    };
+    button.ondragover = (event) => {
+      if (!group) return;
+      if (draggedItemId || (draggedGroupId && draggedGroupId !== group.id)) {
+        event.preventDefault();
+        button.classList.add("todo-pro-drag-over");
+      }
+    };
+    button.ondragleave = () => {
+      button.classList.remove("todo-pro-drag-over");
+    };
+    button.ondrop = (event) => {
+      if (!group) return;
+      event.preventDefault();
+      button.classList.remove("todo-pro-drag-over");
+      if (draggedItemId) {
+        const item = state.items.find((candidate) => candidate.id === draggedItemId);
+        if (item) moveItemToGroup(item, group.id);
+      } else if (draggedGroupId) {
+        reorderGroups(draggedGroupId, group.id);
+      }
+      draggedItemId = null;
+      draggedGroupId = null;
+    };
+    button.ondragend = () => {
+      draggedGroupId = null;
+      button.classList.remove("todo-pro-drag-over");
+    };
+    return row;
+  }
+
+  function renderAddGroupTile(): HTMLElement {
+    if (creatingGroup) {
+      const form = document.createElement("form");
+      form.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = "New group";
+      input.setAttribute("aria-label", "New TODO group");
+      input.className = "todo-pro-control";
+      const save = document.createElement("button");
+      save.type = "submit";
+      save.textContent = "Add";
+      save.setAttribute("aria-label", "Add group");
+      save.className = "todo-pro-icon-button";
+      form.onsubmit = (event) => {
+        event.preventDefault();
+        addGroup(input.value);
+      };
+      input.onkeydown = (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          creatingGroup = false;
+          renderControls();
+        }
+      };
+      form.append(input, save);
+      setTimeout(() => input.focus(), 0);
+      return form;
+    }
+    const add = document.createElement("button");
+    add.type = "button";
+    const mark = document.createElement("span");
+    mark.textContent = "+";
+    mark.className = "todo-pro-add-mark";
+    add.append(mark);
+    add.setAttribute("aria-label", "Create TODO group");
+    add.className = "todo-pro-add-tile";
+    add.onclick = () => {
+      creatingGroup = true;
+      renderControls();
+    };
+    return add;
   }
 
   type TodoCombobox = HTMLDivElement & {
@@ -843,7 +1253,6 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
     }
 
     editingItemId = null;
-    itemMenu = null;
     persistAndRender({
       ...state,
       items: state.items.map((existing) =>
@@ -856,7 +1265,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
     return true;
   }
 
-  function moveItemToGroup(item: TodoItem, targetGroupId: string): boolean {
+  function moveItemToGroup(item: TodoItem, targetGroupId: string, shouldPersist = true): boolean {
     if (item.groupId === targetGroupId) return true;
     if (!state.groups.some((group) => group.id === targetGroupId)) return false;
     if (
@@ -872,24 +1281,31 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       return false;
     }
 
-    persistAndRender({
-      ...state,
-      items: state.items.map((existing) =>
-        existing.id === item.id
-          ? {
-              ...existing,
-              groupId: targetGroupId,
-              updatedAt: new Date().toISOString(),
-            }
-          : existing,
-      ),
-    });
+    if (shouldPersist) {
+      persistAndRender({
+        ...state,
+        items: state.items.map((existing) =>
+          existing.id === item.id
+            ? {
+                ...existing,
+                groupId: targetGroupId,
+                order: nextOrder(state.items.filter((candidate) => candidate.groupId === targetGroupId)),
+                updatedAt: new Date().toISOString(),
+              }
+            : existing,
+        ),
+      });
+    }
     setMessage("");
     return true;
   }
 
   function renderItem(item: TodoItem): HTMLElement {
     const row = document.createElement("div");
+    row.className = "todo-pro-item";
+    row.tabIndex = 0;
+    row.draggable = editingItemId !== item.id;
+    row.setAttribute("aria-label", `TODO item: ${item.text}`);
     row.style.cssText = `
       display: grid;
       grid-template-columns: auto minmax(0, 1fr) auto;
@@ -901,15 +1317,46 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       border-radius: 8px;
       background: ${colors.raised};
     `;
-    row.oncontextmenu = (event) => {
+    row.onkeydown = (event) => {
+      if (
+        editingItemId !== item.id &&
+        (event.key === "Delete" || event.key === "Backspace")
+      ) {
+        event.preventDefault();
+        deleteItem(item);
+      }
+    };
+    row.ondragstart = (event) => {
+      if (editingItemId === item.id) {
+        event.preventDefault();
+        return;
+      }
+      draggedItemId = item.id;
+      event.dataTransfer?.setData("text/plain", item.id);
+      event.dataTransfer?.setData("application/x-cliporax-todo-item", item.id);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+    };
+    row.ondragover = (event) => {
+      if (draggedItemId && draggedItemId !== item.id) {
+        event.preventDefault();
+        row.classList.add("todo-pro-drag-over");
+      }
+    };
+    row.ondragleave = () => {
+      row.classList.remove("todo-pro-drag-over");
+    };
+    row.ondrop = (event) => {
       event.preventDefault();
-      event.stopPropagation();
-      itemMenu = {
-        itemId: item.id,
-        x: event.clientX,
-        y: event.clientY,
-      };
-      renderList();
+      row.classList.remove("todo-pro-drag-over");
+      if (draggedItemId && draggedItemId !== item.id) {
+        reorderItems(draggedItemId, item.id);
+      }
+      draggedItemId = null;
+      draggedGroupId = null;
+    };
+    row.ondragend = () => {
+      draggedItemId = null;
+      row.classList.remove("todo-pro-drag-over");
     };
 
     const checkbox = document.createElement("input");
@@ -1019,7 +1466,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
         font: inherit;
         font-size: 12px;
         line-height: 1.35;
-        cursor: text;
+        cursor: default;
         color: ${item.completed ? colors.complete : colors.text};
         text-decoration: ${item.completed ? "line-through" : "none"};
       `;
@@ -1030,158 +1477,21 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       content.append(text);
     }
 
-    const menuButton = document.createElement("button");
-    menuButton.type = "button";
-    menuButton.textContent = "...";
-    menuButton.setAttribute("aria-label", `Open TODO actions: ${item.text}`);
-    menuButton.className = "todo-pro-secondary";
-    menuButton.style.cssText = `
-      min-width: 32px;
-      min-height: 30px;
-      padding: 4px 8px;
-      line-height: 1;
-    `;
-    menuButton.onclick = (event) => {
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.textContent = "✏️";
+    editButton.setAttribute("aria-label", `Edit TODO: ${item.text}`);
+    editButton.className = "todo-pro-secondary";
+    editButton.style.cssText = "width:30px;min-width:30px;min-height:30px;padding:0;";
+    editButton.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
-      const rect = menuButton.getBoundingClientRect();
-      itemMenu = {
-        itemId: item.id,
-        x: rect.left,
-        y: rect.bottom + 4,
-      };
-      renderList();
-    };
-
-    row.append(checkbox, content, menuButton);
-
-    if (itemMenu?.itemId === item.id) {
-      row.append(renderItemContextMenu(item));
-    }
-    return row;
-  }
-
-  function renderMenuButton(label: string, danger = false): HTMLButtonElement {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = label;
-    button.style.cssText = `
-      width: 100%;
-      min-height: 30px;
-      border: 0;
-      padding: 7px 9px;
-      cursor: pointer;
-      color: ${danger ? colors.error : colors.text};
-      background: transparent;
-      text-align: left;
-      font-size: 12px;
-    `;
-    button.onmouseenter = () => {
-      button.style.background = colors.primarySoft;
-    };
-    button.onmouseleave = () => {
-      button.style.background = "transparent";
-    };
-    return button;
-  }
-
-  function renderItemContextMenu(item: TodoItem): HTMLElement {
-    const menu = document.createElement("div");
-    menu.setAttribute("role", "menu");
-    menu.style.cssText = `
-      position: fixed;
-      z-index: 60;
-      left: ${Math.max(8, itemMenu?.x ?? 8)}px;
-      top: ${Math.max(8, itemMenu?.y ?? 8)}px;
-      min-width: 168px;
-      max-width: calc(100vw - 16px);
-      padding: 4px;
-      border: 1px solid ${colors.subtleBorder};
-      border-radius: 8px;
-      background: ${colors.surface};
-      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
-    `;
-    menu.onclick = (event) => {
-      event.stopPropagation();
-    };
-
-    const edit = renderMenuButton("Edit");
-    edit.setAttribute("aria-label", `Edit TODO: ${item.text}`);
-    edit.onclick = () => {
       editingItemId = item.id;
-      itemMenu = null;
       renderList();
     };
-    menu.append(edit);
 
-    const targetGroups = state.groups.filter((group) => group.id !== item.groupId);
-    if (targetGroups.length > 0) {
-      const moveWrap = document.createElement("div");
-      moveWrap.style.cssText = "position:relative;";
-      const moveTrigger = renderMenuButton("Move to >");
-      moveTrigger.setAttribute("aria-label", `Move TODO to group submenu: ${item.text}`);
-      moveTrigger.style.display = "flex";
-      moveTrigger.style.justifyContent = "space-between";
-      moveTrigger.onfocus = () => {
-        submenu.style.display = "block";
-      };
-      moveTrigger.onmouseenter = () => {
-        submenu.style.display = "block";
-      };
-
-      const submenu = document.createElement("div");
-      submenu.setAttribute("role", "menu");
-      submenu.style.cssText = `
-        display: none;
-        position: absolute;
-        left: calc(100% + 6px);
-        top: 0;
-        min-width: 148px;
-        max-width: calc(100vw - 16px);
-        padding: 4px;
-        border: 1px solid ${colors.subtleBorder};
-        border-radius: 8px;
-        background: ${colors.surface};
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
-      `;
-      moveWrap.onmouseleave = () => {
-        submenu.style.display = "none";
-      };
-
-      for (const group of targetGroups) {
-        const move = renderMenuButton(group.name);
-        move.setAttribute("aria-label", `Move TODO to group ${group.name}: ${item.text}`);
-        move.onclick = () => {
-          moveItemToGroup(item, group.id);
-        };
-        submenu.append(move);
-      }
-
-      moveWrap.append(moveTrigger, submenu);
-      menu.append(moveWrap);
-    }
-
-    const divider = document.createElement("div");
-    divider.style.cssText = `
-      margin: 4px 0;
-      border-top: 1px solid ${colors.subtleBorder};
-    `;
-    menu.append(divider);
-
-    const deleteButton = renderMenuButton("Delete", true);
-    deleteButton.setAttribute("aria-label", `Delete TODO: ${item.text}`);
-    deleteButton.onclick = () => {
-      editingItemId = null;
-      itemMenu = null;
-      persistAndRender({
-        ...state,
-        items: state.items.filter((existing) => existing.id !== item.id),
-      });
-      setMessage("");
-    };
-    menu.append(deleteButton);
-
-    return menu;
+    row.append(checkbox, content, editButton);
+    return row;
   }
 
   function renderList(): void {
@@ -1207,36 +1517,72 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
         background: ${colors.surface};
       `;
       list.append(empty);
+      list.append(renderAddItemTile());
       return;
     }
-
-    const activeGroupName =
-      activeGroupId === "all"
-        ? "All tasks"
-        : state.groups.find((group) => group.id === activeGroupId)?.name ?? "Tasks";
-    const listHeader = document.createElement("div");
-    listHeader.style.cssText = `
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      min-height: 32px;
-      color: ${colors.muted};
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-    `;
-    const title = document.createElement("span");
-    title.textContent = activeGroupName;
-    const count = document.createElement("span");
-    count.textContent = `${visibleItems.filter((item) => !item.completed).length}/${visibleItems.length}`;
-    count.style.fontVariantNumeric = "tabular-nums";
-    listHeader.append(title, count);
-    list.append(listHeader);
 
     for (const item of visibleItems) {
       list.append(renderItem(item));
     }
+    list.append(renderAddItemTile());
+  }
+
+  function renderAddItemTile(): HTMLElement {
+    if (creatingItem) {
+      const form = document.createElement("form");
+      form.style.cssText = `
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 7px;
+        align-items: start;
+        padding: 8px;
+        border: 1px solid ${colors.subtleBorder};
+        border-radius: 8px;
+        background: ${colors.raised};
+      `;
+      const input = document.createElement("textarea");
+      input.rows = 2;
+      input.placeholder = "Add TODO item";
+      input.setAttribute("aria-label", "Add TODO item");
+      input.className = "todo-pro-control";
+      input.style.resize = "vertical";
+      const save = document.createElement("button");
+      save.type = "submit";
+      save.textContent = "Add";
+      save.setAttribute("aria-label", "Save new TODO item");
+      save.className = "todo-pro-icon-button";
+      form.onsubmit = (event) => {
+        event.preventDefault();
+        addItem(input.value);
+      };
+      input.onkeydown = (event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+          event.preventDefault();
+          addItem(input.value);
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          creatingItem = false;
+          renderList();
+        }
+      };
+      form.append(input, save);
+      setTimeout(() => input.focus(), 0);
+      return form;
+    }
+    const add = document.createElement("button");
+    add.type = "button";
+    const mark = document.createElement("span");
+    mark.textContent = "+";
+    mark.className = "todo-pro-add-mark";
+    add.append(mark);
+    add.setAttribute("aria-label", "Create TODO item");
+    add.className = "todo-pro-add-tile";
+    add.onclick = () => {
+      creatingItem = true;
+      renderList();
+    };
+    return add;
   }
 
   form.onsubmit = (event) => {
@@ -1267,6 +1613,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
           createdAt: new Date().toISOString(),
           completedAt: null,
           updatedAt: null,
+          order: nextOrder(state.items.filter((item) => item.groupId === groupId)),
         },
       ],
     });
@@ -1291,6 +1638,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       name,
       collapsed: false,
       createdAt: new Date().toISOString(),
+      order: nextOrder(state.groups),
     };
     persistAndRender({ ...state, groups: [...state.groups, group] });
     groupInput.value = "";
@@ -1307,27 +1655,12 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
   };
 
   window.addEventListener(`${PLUGIN_ID}:items-changed`, handleExternalItemsChanged);
-  const handleOutsidePointer = (event: PointerEvent) => {
-    if (!itemMenu) return;
-    const target = event.target;
-    if (target instanceof Element && target.closest("[role='menu']")) return;
-    closeItemMenu();
-  };
-  const handleEscape = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && itemMenu) {
-      closeItemMenu();
-    }
-  };
-  document.addEventListener("pointerdown", handleOutsidePointer, true);
-  document.addEventListener("keydown", handleEscape);
   const cleanupObserver = new MutationObserver(() => {
     if (root.isConnected) return;
     window.removeEventListener(
       `${PLUGIN_ID}:items-changed`,
       handleExternalItemsChanged,
     );
-    document.removeEventListener("pointerdown", handleOutsidePointer, true);
-    document.removeEventListener("keydown", handleEscape);
     cleanupObserver.disconnect();
   });
   cleanupObserver.observe(document.documentElement, {

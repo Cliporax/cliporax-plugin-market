@@ -19,6 +19,18 @@ interface ExtensionProps {
   context?: PluginContext;
 }
 
+interface PluginTransferItem {
+  id?: number | null;
+  content?: string;
+}
+
+interface PluginContextMenuItem {
+  id: string;
+  label: string;
+  icon?: string;
+  action(api: { getItems(): PluginTransferItem[] }): void | Promise<void>;
+}
+
 interface RuntimePlugin {
   onActivate?: (context: PluginContext) => void;
   onDeactivate?: () => void;
@@ -27,6 +39,7 @@ interface RuntimePlugin {
     {
       render: (props: ExtensionProps) => HTMLElement | null;
       shouldShow?: (props: ExtensionProps) => boolean;
+      getMenuItems?: (props: ExtensionProps) => PluginContextMenuItem[];
     }
   >;
 }
@@ -99,8 +112,22 @@ hostWindow.CliporaxPlugins[PLUGIN_ID] = {
         }
         return createPreviewButton(item, props.context?.theme || "dark");
       },
-      shouldShow: (props: ExtensionProps) =>
-        props.data?.item?.type === "image" && props.data?.position === "action",
+      shouldShow: (props: ExtensionProps) => props.data?.item?.type === "image",
+      getMenuItems: () => [
+        {
+          id: "preview-image",
+          label: "Preview Image",
+          icon: "image-plus",
+          action: async (api) => {
+            const item = api.getItems()[0];
+            if (!item?.content) return;
+            await invoke<string>("preview_create_window", {
+              imageData: item.content,
+              title: `Image Preview - #${item.id ?? ""}`,
+            });
+          },
+        },
+      ],
     },
   },
 };

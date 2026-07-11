@@ -2,7 +2,7 @@
   "id": "com.cliporax.translate",
   "name": "Translate",
   "description": "Translate text clipboard items using configurable free or free-tier providers. Clipboard text is sent only when you use Translate.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": {
     "name": "Cliporax"
   },
@@ -18,7 +18,7 @@
       "required": true
     },
     {
-      "permission": "clipboard:read",
+      "permission": "data:read",
       "reason": "Read selected text clipboard items for translation.",
       "required": true
     },
@@ -149,7 +149,7 @@
       "preserveFormatting": true
     }
   },
-  "minAppVersion": "1.1.0",
+  "minAppVersion": "1.2.2",
   "compatibility": {
     "platforms": ["linux", "macos", "windows"]
   },
