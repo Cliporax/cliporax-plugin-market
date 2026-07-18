@@ -32,6 +32,8 @@ interface ExtensionProps {
   context?: {
     theme?: "light" | "dark";
     ui: PluginUi;
+    storage?: PluginStorage;
+    events?: PluginEvents;
   };
   config?: Record<string, unknown>;
 }
@@ -60,7 +62,7 @@ interface PluginUi {
 
 interface RuntimePlugin {
   meta: { id: string; name: string; version: string };
-  onActivate(): void;
+  onActivate(context?: ExtensionProps["context"]): void;
   onDeactivate(): void;
   acceptItems?(items: PluginTransferItem[]): number;
   extensions: Record<
@@ -100,7 +102,21 @@ interface CliporaxWindow extends Window {
   };
 }
 
+interface PluginStorage {
+  get<T>(key: string): Promise<T | null>;
+  set(key: string, value: unknown): Promise<void>;
+}
+
+interface PluginEvents {
+  onSyncCompleted(
+    callback: (payload: { profileId: string; report: unknown }) => void,
+  ): Promise<() => void>;
+}
+
 const hostWindow = window as CliporaxWindow;
+let pluginStorage = hostWindow.CliporaxPluginStorage;
+let stopSyncListener: (() => void) | undefined;
+let syncListenerGeneration = 0;
 
 function normalizeText(value: string): string {
   return value.trim();
@@ -249,20 +265,20 @@ function loadState(): TodoState {
 function saveState(state: TodoState): void {
   const stored = { groups: sortGroups(state.groups), items: sortItems(state.items) };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
-  void hostWindow.CliporaxPluginStorage?.set(STORAGE_KEY, stored).catch(() => {
+  void pluginStorage?.set(STORAGE_KEY, stored).catch(() => {
     // Local storage remains an offline fallback; the next save retries sync.
   });
 }
 
 async function hydrateSyncedState(): Promise<void> {
   try {
-    const remote = await hostWindow.CliporaxPluginStorage?.get<TodoState>(STORAGE_KEY);
+    const remote = await pluginStorage?.get<TodoState>(STORAGE_KEY);
     if (remote) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(remote));
       window.dispatchEvent(new CustomEvent(`${PLUGIN_ID}:items-changed`));
       return;
     }
-    await hostWindow.CliporaxPluginStorage?.set(STORAGE_KEY, loadState());
+    await pluginStorage?.set(STORAGE_KEY, loadState());
   } catch {
     // Offline mode intentionally keeps the local copy usable.
   }
@@ -335,6 +351,7 @@ function getMoveToTodoMenuItems(): PluginContextMenuItem[] {
 }
 
 function renderTodoView(props: ExtensionProps): HTMLElement {
+  pluginStorage = props.context?.storage ?? pluginStorage;
   const dark = props.context?.theme === "dark";
   const colors = {
     background: dark ? "#0f172a" : "#f0fdfa",
@@ -1555,6 +1572,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
   };
 
   window.addEventListener(`${PLUGIN_ID}:items-changed`, handleExternalItemsChanged);
+  void hydrateSyncedState();
   const cleanupObserver = new MutationObserver(() => {
     if (root.isConnected) return;
     window.removeEventListener(
@@ -1575,9 +1593,25 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
 }
 
 const plugin: RuntimePlugin = {
-  meta: { id: PLUGIN_ID, name: "TODO", version: "0.1.0" },
-  onActivate() { void hydrateSyncedState(); },
-  onDeactivate() {},
+  meta: { id: PLUGIN_ID, name: "TODO", version: "0.1.1" },
+  onActivate(context) {
+    pluginStorage = context?.storage ?? pluginStorage;
+    const generation = ++syncListenerGeneration;
+    stopSyncListener?.();
+    stopSyncListener = undefined;
+    void context?.events?.onSyncCompleted(() => {
+      void hydrateSyncedState();
+    }).then((unlisten) => {
+      if (generation === syncListenerGeneration) stopSyncListener = unlisten;
+      else unlisten();
+    });
+    void hydrateSyncedState();
+  },
+  onDeactivate() {
+    syncListenerGeneration += 1;
+    stopSyncListener?.();
+    stopSyncListener = undefined;
+  },
   acceptItems,
   extensions: {
     TodoView: {

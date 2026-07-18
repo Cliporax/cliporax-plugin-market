@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4
+
+- Refresh file entries immediately after sync and transfer events.
+- Prevent stale list requests from replacing newer sync results.
+- Improve sync action feedback and event listener cleanup.
+
 ## 0.1.3
 
 - Initial marketplace release for the File Sync plugin.

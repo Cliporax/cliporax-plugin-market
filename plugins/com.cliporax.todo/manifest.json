@@ -2,7 +2,7 @@
   "id": "com.cliporax.todo",
   "name": "TODO",
   "description": "Adds an independent local TODO list tab to Cliporax.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Cliporax"
   },

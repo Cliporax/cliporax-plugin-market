@@ -100,7 +100,25 @@ interface ExtensionProps {
   context?: {
     theme?: "light" | "dark";
     ui: PluginUi;
+    events?: PluginEvents;
   };
+}
+
+interface PluginEvents {
+  onSyncCompleted(
+    callback: (payload: { profileId: string; report: unknown }) => void,
+  ): Promise<() => void>;
+  onFileSyncChanged(
+    callback: (payload: { entryIds: string[]; reason: string }) => void,
+  ): Promise<() => void>;
+  onFileSyncProgress(
+    callback: (payload: {
+      entryId: string;
+      status: string;
+      completedBytes: number;
+      totalBytes: number;
+    }) => void,
+  ): Promise<() => void>;
 }
 
 interface PluginComboboxOption {
@@ -315,17 +333,19 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
   const profileSelect = profileCombobox;
   profileSelect.element.style.flex = "1";
   const refreshButton = createButton(messages.refresh, async () => {
-    if (profileValue) {
-      await invoke("file_sync_refresh", { profileId: profileValue });
-    }
-    await loadEntries();
+    await run(async () => {
+      if (profileValue) {
+        await invoke("file_sync_refresh", { profileId: profileValue });
+      }
+    });
   });
   const syncNowButton = createButton(messages.syncNow, async () => {
-    if (!profileValue) {
-      throw new Error(messages.chooseProfile);
-    }
-    await invoke("sync_run_now", { profileId: profileValue });
-    await loadEntries();
+    await run(async () => {
+      if (!profileValue) {
+        throw new Error(messages.chooseProfile);
+      }
+      await invoke("sync_run_now", { profileId: profileValue });
+    });
   });
   const copySelectedButton = createButton(messages.copySelected, async () => {
     if (selectedEntries.size === 0) return;
@@ -345,6 +365,8 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
 
   const message = document.createElement("div");
   message.style.cssText = `min-height:16px;font-size:11px;color:${colors.muted};`;
+  message.setAttribute("role", "status");
+  message.setAttribute("aria-live", "polite");
   const list = document.createElement("div");
   list.style.cssText = "flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px;";
   root.append(toolbar, message, list);
@@ -420,9 +442,11 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
   }
 
   async function loadEntries(): Promise<void> {
+    const requestId = ++latestEntriesRequest;
     const entries = await invoke<FileSyncEntry[]>("file_sync_list", {
       profileId: profileValue || null,
     });
+    if (requestId !== latestEntriesRequest) return;
     const copyableIds = new Set(
       entries
         .filter((entry) => ["synced", "remote", "ready"].includes(entry.status))
@@ -550,19 +574,61 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
     }
   }
 
+  let latestEntriesRequest = 0;
   void refreshView();
+  const unlisteners: Array<() => void> = [];
+  let refreshTimer: number | undefined;
+  const scheduleEntriesRefresh = () => {
+    if (!root.isConnected || refreshTimer !== undefined) return;
+    refreshTimer = window.setTimeout(() => {
+      refreshTimer = undefined;
+      void loadEntries().catch(renderError);
+    }, 80);
+  };
+  const registerListener = (subscription: Promise<() => void>) => {
+    void subscription.then((unlisten) => {
+      if (root.isConnected) unlisteners.push(unlisten);
+      else unlisten();
+    }).catch(() => {});
+  };
+  if (props.context?.events) {
+    registerListener(
+      props.context.events.onFileSyncChanged(scheduleEntriesRefresh),
+    );
+    registerListener(
+      props.context.events.onFileSyncProgress(scheduleEntriesRefresh),
+    );
+    registerListener(
+      props.context.events.onSyncCompleted((payload) => {
+        if (!profileValue || payload.profileId === profileValue) {
+          scheduleEntriesRefresh();
+        }
+      }),
+    );
+  }
   const poll = window.setInterval(() => {
     if (!root.isConnected) {
       window.clearInterval(poll);
       return;
     }
     void loadEntries().catch(() => {});
-  }, 1500);
+  }, 5000);
+  const cleanupObserver = new MutationObserver(() => {
+    if (root.isConnected) return;
+    window.clearInterval(poll);
+    if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+    for (const unlisten of unlisteners) unlisten();
+    cleanupObserver.disconnect();
+  });
+  cleanupObserver.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
   return root;
 }
 
 const plugin: RuntimePlugin = {
-  meta: { id: PLUGIN_ID, name: "File Sync", version: "0.1.0" },
+  meta: { id: PLUGIN_ID, name: "File Sync", version: "0.1.4" },
   onActivate() {},
   onDeactivate() {},
   extensions: {

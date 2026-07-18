@@ -2,7 +2,7 @@
   "id": "com.cliporax.file-sync",
   "name": "File Sync",
   "description": "Synchronize individual files and folder snapshots through an existing Cliporax cloud sync profile.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "author": {
     "name": "Cliporax",
     "url": "https://github.com/Cliporax/cliporax-plugin-market"
