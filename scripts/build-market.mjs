@@ -18,6 +18,7 @@ const command = process.argv[2] ?? "build";
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const pluginIdPattern = /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*)+$/;
 const allowedTypes = new Set(["utility", "integration", "viewer", "automation", "sync", "other"]);
+const allowedRuntimeTypes = new Set(["source", "transform", "sink", "router"]);
 const allowedPlatforms = new Set(["linux", "macos", "windows"]);
 const allowedIconTypes = new Map([
   [".svg", "image/svg+xml"],
@@ -179,6 +180,7 @@ async function loadPlugins() {
     if (!manifest) continue;
 
     validateManifest(manifest, child.name);
+    validateRuntimeType(manifest.type, manifest.id);
     if (seen.has(manifest.id)) throw new Error(`Duplicate plugin id: ${manifest.id}`);
     seen.add(manifest.id);
 
@@ -255,6 +257,27 @@ function validateManifest(manifest, directoryName) {
   }
   validateUrl(manifest.homepage, `homepage for ${manifest.id}`);
   validateUrl(manifest.repository, `repository for ${manifest.id}`);
+}
+
+function validateRuntimeType(type, pluginId) {
+  if (typeof type === "string" && allowedRuntimeTypes.has(type)) return;
+
+  if (
+    type &&
+    typeof type === "object" &&
+    !Array.isArray(type) &&
+    Object.keys(type).length === 1 &&
+    Array.isArray(type.hybrid) &&
+    type.hybrid.length > 0
+  ) {
+    for (const nestedType of type.hybrid) validateRuntimeType(nestedType, pluginId);
+    return;
+  }
+
+  throw new Error(
+    `Invalid runtime plugin type for ${pluginId}: ${JSON.stringify(type)}. ` +
+      'Use source, transform, sink, router, or { "hybrid": [...] }; put market categories such as utility in market.type.'
+  );
 }
 
 async function readIcon(iconPath, relativePath, pluginId) {
