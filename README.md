@@ -55,6 +55,22 @@ writes packages to `dist/`, and generates `market/index.json`.
 data directory. `npm run install:local-dev` installs them into the isolated
 `com.cliporax.app.dev` data directory used by `npm run tauri:dev`.
 
+## Development Quality Gates
+
+Plugin changes are complete only after all of these checks pass:
+
+1. Run `npm run build` and `npm run validate`.
+2. Run `npm run install:local-dev`, then confirm the development app discovers
+   and loads the installed plugin without manifest, permission, entry-point, or
+   missing-file errors.
+3. Run automated tests covering the changed behavior and its important failure
+   paths. Add or update tests when coverage is missing; manual UI verification
+   alone is not sufficient.
+
+Always report the installation check and automated test commands with the
+change. If an environment dependency prevents either check, document the
+blocker instead of treating the plugin as fully verified.
+
 Release URLs are generated from GitHub Actions environment variables by default.
 For local builds, set `CLIPORAX_MARKET_RELEASE_BASE_URL`:
 
