@@ -5,7 +5,12 @@ import path from "node:path";
 
 const root = process.cwd();
 const pluginsDir = path.join(root, "plugins");
-const appIdentifier = process.env.CLIPORAX_APP_IDENTIFIER || "com.cliporax.app";
+const productionIdentifier = "com.cliporax.app";
+const developmentIdentifier = "com.cliporax.app.dev";
+const developmentInstall = process.argv.includes("--dev");
+const appIdentifier = developmentInstall
+  ? developmentIdentifier
+  : process.env.CLIPORAX_APP_IDENTIFIER || productionIdentifier;
 const skipBuild = process.argv.includes("--skip-build");
 
 function runtimePluginDir() {

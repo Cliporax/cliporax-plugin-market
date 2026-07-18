@@ -7,7 +7,8 @@
     "build": "node scripts/build-market.mjs build",
     "validate": "node scripts/build-market.mjs validate",
     "pack": "node scripts/build-market.mjs pack",
-    "install:local": "node scripts/install-local.mjs"
+    "install:local": "node scripts/install-local.mjs",
+    "install:local-dev": "node scripts/install-local.mjs --dev"
   },
   "engines": {
     "node": ">=20"

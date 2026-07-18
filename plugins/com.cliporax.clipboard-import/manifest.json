@@ -1,0 +1,23 @@
+{
+  "id": "com.cliporax.clipboard-import",
+  "name": "Clipboard Import",
+  "description": "Import text clipboard history from CopyQ, GPaste, Ditto, Klipper, Maccy, Raycast, and NDJSON exporters.",
+  "version": "0.2.0",
+  "author": { "name": "Cliporax" },
+  "license": "MIT",
+  "homepage": "https://github.com/Cliporax/cliporax-plugin-market",
+  "repository": "https://github.com/Cliporax/cliporax-plugin-market",
+  "keywords": ["clipboard", "import", "ditto", "copyq", "gpaste", "klipper", "maccy", "raycast"],
+  "type": "utility",
+  "permissions": [
+    { "permission": "ui:extension", "reason": "Add the import tab.", "required": true },
+    { "permission": "system:process", "reason": "Run the user-configured clipboard exporter without a shell.", "required": true },
+    { "permission": "data:write", "reason": "Write imported text into the selected Cliporax tab.", "required": true }
+  ],
+  "extensions": [{ "point": "content-tab", "component": "ClipboardImportView", "icon": "upload", "priority": 30 }],
+  "compatibility": { "platforms": ["linux", "macos", "windows"] },
+  "icon": "assets/icon.svg",
+  "main": "main.js",
+  "minAppVersion": "1.2.3",
+  "market": { "author": "Cliporax", "type": "utility" }
+}

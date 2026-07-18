@@ -44,10 +44,16 @@ npm ci
 npm run build
 npm run validate
 npm run pack
+npm run install:local
+npm run install:local-dev
 ```
 
 `npm run build` compiles plugin TypeScript sources, validates plugin manifests,
 writes packages to `dist/`, and generates `market/index.json`.
+
+`npm run install:local` installs built plugins into the production Cliporax
+data directory. `npm run install:local-dev` installs them into the isolated
+`com.cliporax.app.dev` data directory used by `npm run tauri:dev`.
 
 Release URLs are generated from GitHub Actions environment variables by default.
 For local builds, set `CLIPORAX_MARKET_RELEASE_BASE_URL`:

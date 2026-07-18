@@ -7,6 +7,7 @@ const messages = isChinese
       notSynced: "尚未同步",
       unknown: "未知",
       addToSync: "添加到文件同步",
+      syncNow: "立即同步",
       refresh: "刷新",
       copySelected: "复制所选",
       chooseProfile: "选择同步配置…",
@@ -31,6 +32,7 @@ const messages = isChinese
       notSynced: "Not synced",
       unknown: "Unknown",
       addToSync: "Add to File Sync",
+      syncNow: "Sync now",
       refresh: "Refresh",
       copySelected: "Copy selected",
       chooseProfile: "Choose sync profile…",
@@ -318,6 +320,13 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
     }
     await loadEntries();
   });
+  const syncNowButton = createButton(messages.syncNow, async () => {
+    if (!profileValue) {
+      throw new Error(messages.chooseProfile);
+    }
+    await invoke("sync_run_now", { profileId: profileValue });
+    await loadEntries();
+  });
   const copySelectedButton = createButton(messages.copySelected, async () => {
     if (selectedEntries.size === 0) return;
     await run(() =>
@@ -327,7 +336,12 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
     copySelectedButton.disabled = true;
   });
   copySelectedButton.disabled = true;
-  toolbar.append(profileSelect.element, refreshButton, copySelectedButton);
+  toolbar.append(
+    profileSelect.element,
+    syncNowButton,
+    refreshButton,
+    copySelectedButton,
+  );
 
   const message = document.createElement("div");
   message.style.cssText = `min-height:16px;font-size:11px;color:${colors.muted};`;

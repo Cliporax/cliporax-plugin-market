@@ -985,6 +985,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       input.onkeydown = (event) => {
         if (event.key === "Escape") {
           event.preventDefault();
+          event.stopPropagation();
           editingGroupId = null;
           renderControls();
         }
@@ -1133,6 +1134,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
       input.onkeydown = (event) => {
         if (event.key === "Escape") {
           event.preventDefault();
+          event.stopPropagation();
           creatingGroup = false;
           renderControls();
         }
@@ -1338,6 +1340,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
         }
         if (event.key === "Escape") {
           event.preventDefault();
+          event.stopPropagation();
           editingItemId = null;
           renderList();
         }
@@ -1458,6 +1461,7 @@ function renderTodoView(props: ExtensionProps): HTMLElement {
         }
         if (event.key === "Escape") {
           event.preventDefault();
+          event.stopPropagation();
           creatingItem = false;
           renderList();
         }
