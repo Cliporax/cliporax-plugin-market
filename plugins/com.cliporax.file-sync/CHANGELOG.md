@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5
+
+- Pull remote File Sync changes when the view opens or the selected profile changes.
+- Refresh the remote File Sync feed after a matching cloud sync completes.
+- Select the only available sync profile automatically on a new machine.
+
 ## 0.1.4
 
 - Refresh file entries immediately after sync and transfer events.

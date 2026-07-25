@@ -1,3 +1,8 @@
+import {
+  refreshFileSyncProfile,
+  resolveFileSyncProfileId,
+} from "./refresh.mjs";
+
 const PLUGIN_ID = "com.cliporax.file-sync";
 const MAX_BATCH_COPY = 32;
 const isChinese = navigator.language.toLowerCase().startsWith("zh");
@@ -325,6 +330,7 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
       void run(async () => {
         if (profileValue) {
           await invoke("file_sync_set_profile", { profileId: profileValue });
+          await refreshFileSyncProfile(invoke, profileValue);
         }
       });
     },
@@ -334,9 +340,7 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
   profileSelect.element.style.flex = "1";
   const refreshButton = createButton(messages.refresh, async () => {
     await run(async () => {
-      if (profileValue) {
-        await invoke("file_sync_refresh", { profileId: profileValue });
-      }
+      await refreshFileSyncProfile(invoke, profileValue);
     });
   });
   const syncNowButton = createButton(messages.syncNow, async () => {
@@ -405,6 +409,7 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
     renderStatus(messages.loading);
     try {
       await loadProfiles();
+      await refreshFileSyncProfile(invoke, profileValue);
       await loadEntries();
     } catch (error) {
       renderError(error);
@@ -426,7 +431,10 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
       invoke<ProfileOption[]>("file_sync_profile_options"),
       invoke<FileSyncConfig>("file_sync_get_config"),
     ]);
-    profileValue = config.default_profile_id ?? "";
+    profileValue = resolveFileSyncProfileId(config.default_profile_id, profiles);
+    if (!config.default_profile_id && profileValue) {
+      await invoke("file_sync_set_profile", { profileId: profileValue });
+    }
     profileSelect.setOptions([
       {
         value: "",
@@ -578,11 +586,21 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
   void refreshView();
   const unlisteners: Array<() => void> = [];
   let refreshTimer: number | undefined;
-  const scheduleEntriesRefresh = () => {
-    if (!root.isConnected || refreshTimer !== undefined) return;
+  let remoteRefreshPending = false;
+  const scheduleEntriesRefresh = (refreshRemote = false) => {
+    if (!root.isConnected) return;
+    remoteRefreshPending ||= refreshRemote;
+    if (refreshTimer !== undefined) return;
     refreshTimer = window.setTimeout(() => {
       refreshTimer = undefined;
-      void loadEntries().catch(renderError);
+      const shouldRefreshRemote = remoteRefreshPending;
+      remoteRefreshPending = false;
+      void (async () => {
+        if (shouldRefreshRemote) {
+          await refreshFileSyncProfile(invoke, profileValue);
+        }
+        await loadEntries();
+      })().catch(renderError);
     }, 80);
   };
   const registerListener = (subscription: Promise<() => void>) => {
@@ -593,15 +611,15 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
   };
   if (props.context?.events) {
     registerListener(
-      props.context.events.onFileSyncChanged(scheduleEntriesRefresh),
+      props.context.events.onFileSyncChanged(() => scheduleEntriesRefresh()),
     );
     registerListener(
-      props.context.events.onFileSyncProgress(scheduleEntriesRefresh),
+      props.context.events.onFileSyncProgress(() => scheduleEntriesRefresh()),
     );
     registerListener(
       props.context.events.onSyncCompleted((payload) => {
         if (!profileValue || payload.profileId === profileValue) {
-          scheduleEntriesRefresh();
+          scheduleEntriesRefresh(true);
         }
       }),
     );
@@ -628,7 +646,7 @@ function renderFileSyncView(props: ExtensionProps): HTMLElement {
 }
 
 const plugin: RuntimePlugin = {
-  meta: { id: PLUGIN_ID, name: "File Sync", version: "0.1.4" },
+  meta: { id: PLUGIN_ID, name: "File Sync", version: "0.1.5" },
   onActivate() {},
   onDeactivate() {},
   extensions: {
