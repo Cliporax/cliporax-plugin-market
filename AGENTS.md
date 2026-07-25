@@ -12,6 +12,12 @@ committed or released:
    isolated `com.cliporax.app.dev` data directory. Confirm that Cliporax can
    discover and load the installed plugin without manifest, permission, entry
    point, or missing-file errors.
+   This is a development verification step only: never launch or install a
+   `com.cliporax.app.dev` Cliporax build as a replacement for production, and
+   never place a dev binary where it shadows the production `cliporax` command.
+   Production data lives under `com.cliporax.app`; do not copy, merge, rename,
+   or otherwise modify either database directory as part of plugin
+   installation.
 3. Run the automated tests that cover the changed plugin behavior, including
    important success and failure paths. Add or update automated tests when the
    changed behavior is not covered; a manual UI check alone is not sufficient.
