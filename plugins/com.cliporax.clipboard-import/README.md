@@ -1,19 +1,29 @@
 # Clipboard Import
 
-This plugin imports text clipboard history into a selected Cliporax tab. Processing
-stays local. It requires the user to grant `system:process`; the plugin starts the
-configured executable directly, without a shell, and supplies only the argument
-array shown in the UI.
+This plugin imports clipboard history into a selected Cliporax tab. CopyQ imports
+text and images; the other sources currently import text. Processing stays local.
+It requires the user to grant `system:process`; the plugin starts the configured
+executable directly, without a shell, and supplies only the argument array shown
+in the UI.
 
-The import is intentionally bounded to 5,000 items, 1 MiB per text item, 8 MiB of
-process output, and 60 seconds per exporter run. Items from supported sources are
-read newest-first and written oldest-first so their visible ordering is preserved.
+The import is intentionally bounded to 50,000 items, 1 MiB per text item, 50 MiB
+per image, 8 MiB of host process output, and 60 seconds per exporter run. CopyQ is
+read in cursor-based pages with a 7 MiB transfer budget per page, so large histories
+continue until every tab has been scanned. Items are written oldest-first so their
+visible ordering is preserved. On hosts with batch-create support, up to 250 items
+share one IPC call and SQLite transaction; failed batches are split automatically
+so one bad record does not block the rest.
+
+CopyQ defaults to **Keep source tab structure**. Matching non-trash Cliporax tabs
+are reused and missing tabs are created, including empty CopyQ tabs. Choose
+**Merge into one tab** in the CopyQ card to use the single destination selector
+instead.
 
 ## Ready-to-run imports
 
 | Source | Executable | Arguments | Notes |
 | --- | --- | --- | --- |
-| CopyQ | `copyq` | supplied by the plugin | CopyQ must be running. The plugin asks its CLI to print each tab item as NDJSON. |
+| CopyQ | `copyq` | supplied by the plugin | CopyQ must be running. All tabs are scanned in bounded pages; text and common image formats are imported. |
 | GPaste | `gpaste-client` | `history --raw --zero` | NUL separators preserve embedded line breaks. |
 
 The executable fields accept either an absolute path or a command available on
@@ -56,7 +66,7 @@ accessing the user's clipboard database only with their permission.
 
 | Source | First-party interface | v0.2 support | Next safe step |
 | --- | --- | --- | --- |
-| CopyQ | Scriptable CLI | One-click text import | Add MIME-aware image/file migration later. |
+| CopyQ | Scriptable CLI | One-click paged text/image import | Add file-list migration later. |
 | GPaste | `gpaste-client` | One-click multi-line text import | Add named-history selection after version probing. |
 | Ditto | No history-export CLI | Explicit NDJSON exporter | Add a read-only, schema-versioned `Ditto.db` helper. |
 | Klipper | Plasma D-Bus, version-sensitive | Explicit NDJSON exporter | Probe the installed D-Bus interface before enabling a preset. |
