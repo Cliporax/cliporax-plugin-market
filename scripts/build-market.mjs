@@ -87,7 +87,7 @@ async function compilePluginSources() {
     if (error.code === "ENOENT") return [];
     throw error;
   });
-  const esbuild = path.join(root, "node_modules", ".bin", process.platform === "win32" ? "esbuild.cmd" : "esbuild");
+  const esbuild = path.join(root, "node_modules", "esbuild", "bin", "esbuild");
 
   for (const child of children) {
     if (!child.isDirectory()) continue;
@@ -96,8 +96,9 @@ async function compilePluginSources() {
     await ensureRegularFile(sourceEntry, `Plugin ${child.name} must provide TypeScript source at src/main.ts.`);
 
     execFileSync(
-      esbuild,
+      process.execPath,
       [
+        esbuild,
         "src/main.ts",
         "--bundle",
         "--outfile=main.js",
