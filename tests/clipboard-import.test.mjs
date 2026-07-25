@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import vm from "node:vm";
+import { gzipSync } from "node:zlib";
 import { after, test } from "node:test";
 import { build } from "esbuild";
 
 const buildDirectory = await mkdtemp(path.join(tmpdir(), "cliporax-copyq-test-"));
 const outputPath = path.join(buildDirectory, "copyq.mjs");
+const dittoOutputPath = path.join(buildDirectory, "ditto.mjs");
 await build({
   entryPoints: [fileURLToPath(new URL("../plugins/com.cliporax.clipboard-import/src/copyq.ts", import.meta.url))],
   bundle: true,
@@ -16,12 +20,24 @@ await build({
   platform: "node",
   outfile: outputPath,
 });
+await build({
+  entryPoints: [fileURLToPath(new URL("../plugins/com.cliporax.clipboard-import/src/ditto.ts", import.meta.url))],
+  bundle: true,
+  format: "esm",
+  platform: "node",
+  outfile: dittoOutputPath,
+});
 const {
   COPYQ_OUTPUT_BUDGET_BYTES,
   createCopyqPageArguments,
   createCopyqPageScript,
   parseCopyqPage,
 } = await import(pathToFileURL(outputPath));
+const {
+  DITTO_OUTPUT_BUDGET_BYTES,
+  createDittoPowerShellArguments,
+  parseDittoPage,
+} = await import(pathToFileURL(dittoOutputPath));
 
 after(() => rm(buildDirectory, { recursive: true, force: true }));
 
@@ -169,6 +185,99 @@ test("CopyQ parser preserves multiline records and counts malformed output", () 
   assert.deepEqual(parsed.nextCursor, { tab: 0, row: 4 });
 });
 
+test("Ditto parser preserves full multiline text and validates pagination", () => {
+  const page = parseDittoPage([
+    JSON.stringify({ text: "older\nfull text" }),
+    JSON.stringify({ text: "newer text" }),
+    JSON.stringify({
+      __cliporax_ditto: 1,
+      scanned: 2,
+      skipped: 3,
+      total: 8,
+      done: false,
+      nextOffset: 2,
+    }),
+    "",
+  ].join("\n"));
+
+  assert.deepEqual(page.records, [
+    { type: "text", content: "older\nfull text" },
+    { type: "text", content: "newer text" },
+  ]);
+  assert.equal(page.scanned, 2);
+  assert.equal(page.skipped, 3);
+  assert.equal(page.total, 8);
+  assert.equal(page.done, false);
+  assert.equal(page.nextOffset, 2);
+
+  assert.throws(
+    () => parseDittoPage(""),
+    /did not return pagination metadata/,
+  );
+  assert.throws(
+    () => parseDittoPage(JSON.stringify({
+      __cliporax_ditto: 1,
+      scanned: -1,
+      skipped: 0,
+      total: 1,
+      done: false,
+      nextOffset: null,
+    })),
+    /invalid pagination metadata/,
+  );
+});
+
+test("Ditto PowerShell payload stays within host process argument limits", () => {
+  const source = String.raw`C:\Users\example user\备份\Ditto history.zdb`;
+  const args = createDittoPowerShellArguments(source, 0);
+
+  assert.ok(args.length <= 64);
+  assert.ok(args.every((argument) => argument.length <= 4096));
+  assert.ok(args.includes("-NonInteractive"));
+  assert.ok(args.includes("Bypass"));
+  assert.ok(!args.some((argument) => argument.includes(source)));
+  assert.ok(DITTO_OUTPUT_BUDGET_BYTES < 8 * 1024 * 1024);
+  assert.throws(
+    () => createDittoPowerShellArguments(source, -1),
+    /pagination offset is invalid/,
+  );
+});
+
+test("built-in Ditto exporter reads the real database and official-style zdb backup", {
+  skip: process.platform !== "win32",
+}, async (context) => {
+  const databasePath = path.join(process.env.APPDATA ?? "", "Ditto", "Ditto.db");
+  if (!existsSync(databasePath)) {
+    context.skip("Ditto.db is not installed in the standard location");
+    return;
+  }
+
+  const runExporter = (sourcePath) => {
+    const result = spawnSync(
+      "powershell.exe",
+      createDittoPowerShellArguments(sourcePath, 0),
+      { encoding: "utf8", timeout: 60_000, windowsHide: true },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    return parseDittoPage(result.stdout);
+  };
+
+  const databasePage = runExporter(databasePath);
+  assert.ok(databasePage.total > 0);
+  assert.ok(databasePage.records.length > 0);
+  assert.ok(databasePage.records.every((record) => record.content.length > 0));
+
+  const autoDetectedPage = runExporter(undefined);
+  assert.equal(autoDetectedPage.total, databasePage.total);
+  assert.deepEqual(autoDetectedPage.records, databasePage.records);
+
+  const backupPath = path.join(buildDirectory, "Ditto.zdb");
+  await writeFile(backupPath, gzipSync(await readFile(databasePath)));
+  const backupPage = runExporter(backupPath);
+  assert.equal(backupPage.total, databasePage.total);
+  assert.deepEqual(backupPage.records, databasePage.records);
+});
+
 test("clipboard writes use batch IPC and serialized tags", async () => {
   const sourcePath = fileURLToPath(new URL(
     "../plugins/com.cliporax.clipboard-import/src/main.ts",
@@ -221,6 +330,9 @@ test("import source combobox progressively reveals one source card", async () =>
   assert.match(source, /\{ value: "custom", label: "Custom NDJSON exporter" \}/);
   assert.match(source, /copyqCard\.hidden = !isCopyq/);
   assert.match(source, /gpasteCard\.hidden = !isGpaste/);
+  assert.match(source, /dittoCard\.hidden = !isDitto/);
+  assert.match(source, /createDittoPowerShellArguments/);
+  assert.match(source, /Auto-detect or C:\\path\\backup\.zdb/);
   assert.match(source, /exporterCard\.hidden = !isExporter/);
   assert.match(source, /destination\.hidden = isCopyq && copyqLayout === "source-tabs"/);
   assert.doesNotMatch(source, /document\.createElement\("details"\)/);

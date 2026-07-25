@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- Import Ditto text history directly on Windows without a separately installed
+  exporter.
+- Auto-detect the standard Ditto database and accept official gzip-compressed
+  `.zdb` backups as an optional source.
+- Read Ditto in bounded, read-only pages and ignore image-only or group rows.
+- Treat an empty custom exporter response as an error instead of reporting a
+  misleading successful import of zero records.
+
 ## 0.4.0
 
 - Preserve the complete CopyQ tab structure by default, including empty tabs.

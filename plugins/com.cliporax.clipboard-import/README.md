@@ -32,8 +32,8 @@ version wherever the upstream CLI remains compatible.
 
 ## NDJSON exporters
 
-Ditto, Klipper, Maccy, Raycast, and Custom all use the **Run selected exporter**
-section. Configure an executable and a JSON argument array. The program must write
+Klipper, Maccy, Raycast, and Custom use the **Run selected exporter** section.
+Configure an executable and a JSON argument array. The program must write
 one JSON object per line to standard output, ordered newest first:
 
 ```json
@@ -49,8 +49,11 @@ the database with the same failing request.
 
 ### Source-specific boundaries
 
-- **Ditto:** its documented command-line options do not export clipboard history.
-  Use a separately installed, read-only exporter for the local Ditto data.
+- **Ditto:** on Windows, leave the source field empty to auto-detect the standard
+  `%APPDATA%\Ditto\Ditto.db` installation, or enter the full path to an official
+  `.zdb` backup. The plugin runs its bundled read-only exporter through Windows
+  PowerShell, uses the system `winsqlite3.dll`, imports full `CF_UNICODETEXT`
+  records in bounded pages, and never asks Ditto to modify its database.
 - **Klipper:** a D-Bus client can query Klipper, but its history menu output is not
   a stable data interchange format. Use an exporter that talks to the installed
   Klipper version and emits the NDJSON contract above.
@@ -68,7 +71,7 @@ accessing the user's clipboard database only with their permission.
 | --- | --- | --- | --- |
 | CopyQ | Scriptable CLI | One-click paged text/image import | Add file-list migration later. |
 | GPaste | `gpaste-client` | One-click multi-line text import | Add named-history selection after version probing. |
-| Ditto | No history-export CLI | Explicit NDJSON exporter | Add a read-only, schema-versioned `Ditto.db` helper. |
+| Ditto | Local SQLite database and gzip `.zdb` backup | Built-in read-only paged text import | Add image-format migration later. |
 | Klipper | Plasma D-Bus, version-sensitive | Explicit NDJSON exporter | Probe the installed D-Bus interface before enabling a preset. |
 | Maccy | Local Core Data SQLite store | Explicit NDJSON exporter | Add a signed/read-only helper with schema detection. |
 | Raycast | Encrypted `.rayconfig` export | Explicit approved exporter | Integrate only if Raycast publishes a supported decrypt/export API. |

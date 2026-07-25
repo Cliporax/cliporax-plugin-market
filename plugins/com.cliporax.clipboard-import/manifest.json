@@ -1,8 +1,8 @@
 {
   "id": "com.cliporax.clipboard-import",
   "name": "Clipboard Import",
-  "description": "Import CopyQ text, images, and tab structure, plus text from GPaste, Ditto, Klipper, Maccy, Raycast, and NDJSON exporters.",
-  "version": "0.4.0",
+  "description": "Import CopyQ text, images, and tab structure, plus text from GPaste, Ditto databases and backups, Klipper, Maccy, Raycast, and NDJSON exporters.",
+  "version": "0.5.0",
   "author": { "name": "Cliporax" },
   "license": "MIT",
   "homepage": "https://github.com/Cliporax/cliporax-plugin-market",
@@ -11,7 +11,8 @@
   "type": "transform",
   "permissions": [
     { "permission": "ui:extension", "reason": "Add the import tab.", "required": true },
-    { "permission": "system:process", "reason": "Run the user-configured clipboard exporter without a shell.", "required": true },
+    { "permission": "system:process", "reason": "Run supported clipboard tools and the built-in read-only Ditto exporter without a shell.", "required": true },
+    { "permission": "system:file-read", "reason": "Read the local Ditto database or a user-specified Ditto .zdb backup.", "required": true },
     { "permission": "data:write", "reason": "Write imported text into the selected Cliporax tab.", "required": true }
   ],
   "extensions": [{ "point": "content-tab", "component": "ClipboardImportView", "icon": "upload", "priority": 30 }],

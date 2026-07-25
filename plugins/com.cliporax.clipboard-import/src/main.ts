@@ -4,6 +4,11 @@ import {
   createCopyqPageArguments,
   parseCopyqPage,
 } from "./copyq";
+import {
+  DITTO_PAGE_ITEMS,
+  createDittoPowerShellArguments,
+  parseDittoPage,
+} from "./ditto";
 
 const PLUGIN_ID = "com.cliporax.clipboard-import";
 const TAB_LIST_CHANGED_EVENT = "tabs:list-changed";
@@ -132,6 +137,9 @@ function ensureSuccess(output: ProcessOutput): void {
 
 function parseNdjson(output: ProcessOutput): ParsedRecords {
   ensureSuccess(output);
+  if (!output.stdout.trim()) {
+    throw new Error("Exporter completed without returning any clipboard records.");
+  }
   const records: ImportRecord[] = [];
   let skipped = 0;
   for (const line of output.stdout.split(/\r?\n/)) {
@@ -229,7 +237,7 @@ function sourceLabel(source: ImportSource): string {
 function sourceHint(source: ImportSource): string {
   switch (source) {
     case "ditto":
-      return "Windows · Ditto has no supported history-export CLI. Use a read-only exporter for your local Ditto database.";
+      return "Windows · Reads Ditto.db or an official .zdb backup locally and read-only. No separate exporter is required.";
     case "klipper":
       return "Linux/KDE · Use an exporter matched to your Plasma version. Raw history-menu output is not a stable interchange format.";
     case "maccy":
@@ -442,7 +450,7 @@ function render(props: Props): HTMLElement {
           ? ` ${report.failed} not written.${report.firstError ? ` First error: ${report.firstError}` : ""}`
           : "";
         const limited = report.truncated
-          ? ` CopyQ contains more than ${MAX_IMPORT_ITEMS.toLocaleString()} items; the safety limit was applied.`
+          ? ` The source contains more than ${MAX_IMPORT_ITEMS.toLocaleString()} items; the safety limit was applied.`
           : "";
         setStatus(
           `Imported ${report.imported}; skipped ${report.skipped}.${failures}${limited}`,
@@ -677,7 +685,95 @@ function render(props: Props): HTMLElement {
       return importRecords(parseNulSeparated(output), tabId, "gpaste", showProgress);
     },
   );
-  sourceStage.append(copyqCard, gpasteCard);
+
+  const dittoCard = document.createElement("article");
+  dittoCard.className = "ci-card";
+  const dittoCardHead = document.createElement("div");
+  dittoCardHead.className = "ci-card-head";
+  const dittoHeading = document.createElement("h3");
+  dittoHeading.textContent = "Ditto";
+  const dittoBadge = document.createElement("span");
+  dittoBadge.className = "ci-badge";
+  dittoBadge.textContent = "Windows";
+  dittoCardHead.append(dittoHeading, dittoBadge);
+  const dittoHelp = document.createElement("p");
+  dittoHelp.className = "ci-help";
+  dittoHelp.textContent =
+    "Reads text history directly from Ditto in read-only pages. Leave the source empty to auto-detect the standard installation, or enter an official .zdb backup path.";
+  const dittoSource = inputField(
+    "Ditto source (optional)",
+    "",
+    String.raw`Auto-detect or C:\path\backup.zdb`,
+  );
+  const dittoButton = actionButton("Import Ditto", async () => {
+    const tabId = getTargetTab();
+    const sourcePath = dittoSource.input.value.trim() || undefined;
+    let offset = 0;
+    let scanned = 0;
+    let sourceTotal = 0;
+    const report: Report = { imported: 0, skipped: 0, failed: 0 };
+
+    while (scanned < MAX_IMPORT_ITEMS) {
+      const pageLimit = Math.min(DITTO_PAGE_ITEMS, MAX_IMPORT_ITEMS - scanned);
+      setStatus(
+        "Reading Ditto history locally and read-only…",
+        "running",
+        sourceTotal
+          ? { title: activeImportTitle, completed: scanned, total: sourceTotal }
+          : { title: activeImportTitle },
+      );
+      const output = await invoke<ProcessOutput>("plugin_run_process", {
+        executable: "powershell.exe",
+        args: createDittoPowerShellArguments(sourcePath, offset, pageLimit),
+      });
+      ensureSuccess(output);
+      const page = parseDittoPage(output.stdout);
+      sourceTotal = page.total;
+      if (sourceTotal === 0) {
+        throw new Error("The Ditto source contains no text clipboard entries.");
+      }
+      if (page.scanned <= 0 && !page.done) {
+        throw new Error("Ditto pagination made no progress.");
+      }
+
+      const importedBeforePage = report.imported;
+      const pageReport = await importRecords(
+        { records: page.records, skipped: page.skipped },
+        tabId,
+        "ditto",
+        (completed) => {
+          setStatus(
+            `Writing Ditto items… ${(importedBeforePage + completed).toLocaleString()} imported`,
+            "running",
+            {
+              title: activeImportTitle,
+              completed: Math.min(importedBeforePage + completed, sourceTotal),
+              total: sourceTotal,
+            },
+          );
+        },
+        false,
+      );
+      report.imported += pageReport.imported;
+      report.skipped += pageReport.skipped;
+      report.failed += pageReport.failed;
+      report.firstError ??= pageReport.firstError;
+      scanned += page.scanned;
+
+      if (page.done) return report;
+      if (page.nextOffset === undefined || page.nextOffset <= offset) {
+        throw new Error("Ditto pagination offset is missing or invalid.");
+      }
+      offset = page.nextOffset;
+    }
+
+    report.truncated = true;
+    report.skipped += Math.max(0, sourceTotal - scanned);
+    return report;
+  });
+  dittoCard.append(dittoCardHead, dittoHelp, dittoSource.field, dittoButton);
+
+  sourceStage.append(copyqCard, gpasteCard, dittoCard);
 
   const exporterCard = document.createElement("article");
   exporterCard.className = "ci-card";
@@ -724,7 +820,6 @@ function render(props: Props): HTMLElement {
   sourcePicker.append(sourcePickerLabel, sourcePickerHost, sourcePickerHelp);
 
   const advancedSources = new Set<ImportViewSource>([
-    "ditto",
     "klipper",
     "maccy",
     "raycast",
@@ -733,9 +828,11 @@ function render(props: Props): HTMLElement {
   updateSourceView = () => {
     const isCopyq = selectedViewSource === "copyq";
     const isGpaste = selectedViewSource === "gpaste";
+    const isDitto = selectedViewSource === "ditto";
     const isExporter = advancedSources.has(selectedViewSource);
     copyqCard.hidden = !isCopyq;
     gpasteCard.hidden = !isGpaste;
+    dittoCard.hidden = !isDitto;
     exporterCard.hidden = !isExporter;
     destination.hidden = isCopyq && copyqLayout === "source-tabs";
 
