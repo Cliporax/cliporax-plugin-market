@@ -71,12 +71,21 @@ Always report the installation check and automated test commands with the
 change. If an environment dependency prevents either check, document the
 blocker instead of treating the plugin as fully verified.
 
-Release URLs are generated from GitHub Actions environment variables by default.
-For local builds, set `CLIPORAX_MARKET_RELEASE_BASE_URL`:
+Release URLs and `marketVersion` use the same version tag: `RELEASE_TAG` or
+`CLIPORAX_MARKET_VERSION`, then a GitHub tag ref, then the tag in an explicit
+GitHub release base URL. Without these, local/branch builds use `v` plus the
+version in `package.json`. Branch names such as `main` are never used as tags.
+Conflicting versions and GitHub base URLs containing branch names fail the build.
+For local builds targeting a release, set `RELEASE_TAG`:
 
 ```bash
-CLIPORAX_MARKET_RELEASE_BASE_URL=https://github.com/Cliporax/cliporax-plugin-market/releases/download/v0.1.0 npm run build
+RELEASE_TAG=v0.1.9 npm run build
 ```
+
+`CLIPORAX_MARKET_RELEASE_BASE_URL` remains available for custom hosting. For
+GitHub it must include the same concrete version tag as the release. Rebuild
+and upload `market/index.json` together with the packages to that release;
+changing the build script does not repair an already published index.
 
 ## Plugin Requirements
 

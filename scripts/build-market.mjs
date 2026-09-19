@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { resolveReleaseConfig } from "./release-config.mjs";
 
 const root = process.cwd();
 const pluginsDir = path.join(root, "plugins");
@@ -48,6 +49,8 @@ async function main() {
     return;
   }
 
+  const packageMetadata = await readJson(path.join(root, "package.json"));
+  const release = resolveReleaseConfig(process.env, packageMetadata.version);
   await compilePluginSources();
   const plugins = await loadPlugins();
   if (plugins.length === 0) {
@@ -61,14 +64,14 @@ async function main() {
   const entries = [];
   for (const plugin of plugins) {
     const archive = await createPluginArchive(plugin);
-    entries.push(toMarketEntry(plugin, archive));
+    entries.push(toMarketEntry(plugin, archive, release.baseUrl));
   }
   entries.push(...(await loadThirdPartyEntries()));
 
   const index = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
-    marketVersion: getMarketVersion(),
+    marketVersion: release.marketVersion,
     plugins: entries.sort((a, b) => a.id.localeCompare(b.id))
   };
 
@@ -355,8 +358,7 @@ async function createPluginArchive(plugin) {
   };
 }
 
-function toMarketEntry(plugin, archive) {
-  const baseUrl = getReleaseBaseUrl();
+function toMarketEntry(plugin, archive, baseUrl) {
   const downloadUrl = `${baseUrl}/${encodeURIComponent(archive.name)}`;
   const apiUrl = getReleaseApiAssetUrl(archive.name);
   const marketMetadata = getMarketMetadata(plugin.manifest);
@@ -556,16 +558,6 @@ const crcTable = Array.from({ length: 256 }, (_, index) => {
   return value >>> 0;
 });
 
-function getReleaseBaseUrl() {
-  if (process.env.CLIPORAX_MARKET_RELEASE_BASE_URL) {
-    return process.env.CLIPORAX_MARKET_RELEASE_BASE_URL.replace(/\/$/, "");
-  }
-  if (process.env.GITHUB_REPOSITORY && process.env.GITHUB_REF_NAME) {
-    return `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/${process.env.GITHUB_REF_NAME}`;
-  }
-  return "https://github.com/Cliporax/cliporax-plugin-market/releases/download/local";
-}
-
 function getReleaseApiAssetUrl(assetName) {
   if (process.env.CLIPORAX_MARKET_RELEASE_API_BASE_URL) {
     return `${process.env.CLIPORAX_MARKET_RELEASE_API_BASE_URL.replace(/\/$/, "")}/${encodeURIComponent(assetName)}`;
@@ -584,10 +576,6 @@ function getOfficialPublisherUrl() {
     return `https://github.com/${process.env.GITHUB_REPOSITORY}`;
   }
   return "https://github.com/Cliporax/cliporax-plugin-market";
-}
-
-function getMarketVersion() {
-  return process.env.CLIPORAX_MARKET_VERSION ?? process.env.GITHUB_REF_NAME ?? "local";
 }
 
 function validateRelativePath(value, label) {
