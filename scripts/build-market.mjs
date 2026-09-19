@@ -1,6 +1,6 @@
 import { deflateRawSync } from "node:zlib";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { build } from "esbuild";
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -90,31 +90,22 @@ async function compilePluginSources() {
     if (error.code === "ENOENT") return [];
     throw error;
   });
-  const esbuild = path.join(root, "node_modules", "esbuild", "bin", "esbuild");
-
   for (const child of children) {
     if (!child.isDirectory()) continue;
     const pluginRoot = path.join(pluginsDir, child.name);
     const sourceEntry = path.join(pluginRoot, "src", "main.ts");
     await ensureRegularFile(sourceEntry, `Plugin ${child.name} must provide TypeScript source at src/main.ts.`);
 
-    execFileSync(
-      process.execPath,
-      [
-        esbuild,
-        "src/main.ts",
-        "--bundle",
-        "--outfile=main.js",
-        "--format=iife",
-        "--platform=browser",
-        "--target=es2020",
-        "--log-level=warning"
-      ],
-      {
-        cwd: pluginRoot,
-        stdio: "inherit"
-      }
-    );
+    await build({
+      absWorkingDir: pluginRoot,
+      entryPoints: ["src/main.ts"],
+      bundle: true,
+      outfile: "main.js",
+      format: "iife",
+      platform: "browser",
+      target: "es2020",
+      logLevel: "warning",
+    });
   }
 }
 
